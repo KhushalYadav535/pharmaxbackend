@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { doctorService } from '../services/doctor.service';
+import prisma from '../config/database';
 
 export const doctorController = {
   async list(req: Request, res: Response) {
@@ -35,7 +36,19 @@ export const doctorController = {
 
   async create(req: Request, res: Response) {
     try {
-      const doctor = await doctorService.create(req.body);
+      const data = { ...req.body };
+      
+      // Auto-assign territory if not provided
+      if (!data.territoryId) {
+        const userTerritory = await prisma.userTerritory.findFirst({
+          where: { userId: req.user!.userId },
+        });
+        if (userTerritory) {
+          data.territoryId = userTerritory.territoryId;
+        }
+      }
+
+      const doctor = await doctorService.create(data);
       res.status(201).json({ success: true, data: doctor, message: 'Doctor created successfully' });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
