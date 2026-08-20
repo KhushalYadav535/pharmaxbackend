@@ -33,7 +33,32 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', auditLog('CREATE', 'Hospital'), async (req, res) => {
   try {
-    const h = await prisma.hospital.create({ data: req.body });
+    const { name, category, type, city, state, phone, beds, isActive, territoryId } = req.body;
+    
+    // Support either 'category' from frontend or 'type' directly
+    const hospitalType = category || type;
+
+    const data: any = {
+      name,
+      type: hospitalType,
+      city,
+      state,
+      phone,
+      beds: beds ? Number(beds) : undefined,
+      isActive: isActive !== undefined ? isActive : true,
+    };
+
+    if (territoryId) {
+      data.territoryId = territoryId;
+    } else {
+      // Auto-assign territory based on logged-in user if available
+      const userTerritory = await prisma.userTerritory.findFirst({
+        where: { userId: req.user!.userId }
+      });
+      if (userTerritory) data.territoryId = userTerritory.territoryId;
+    }
+
+    const h = await prisma.hospital.create({ data });
     res.status(201).json({ success: true, data: h });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
