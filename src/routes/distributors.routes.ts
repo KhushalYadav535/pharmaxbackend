@@ -33,7 +33,20 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', auditLog('CREATE', 'Distributor'), async (req, res) => {
   try {
-    const dist = await prisma.distributor.create({ data: req.body });
+    const data = { ...req.body };
+    
+    if (data.creditLimit) data.creditLimit = Number(data.creditLimit);
+    if (data.creditDays) data.creditDays = Number(data.creditDays);
+    if (data.outstandingAmount) data.outstandingAmount = Number(data.outstandingAmount);
+
+    if (!data.territoryId) {
+      const userTerritory = await prisma.userTerritory.findFirst({
+        where: { userId: req.user!.userId }
+      });
+      if (userTerritory) data.territoryId = userTerritory.territoryId;
+    }
+
+    const dist = await prisma.distributor.create({ data });
     res.status(201).json({ success: true, data: dist });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });

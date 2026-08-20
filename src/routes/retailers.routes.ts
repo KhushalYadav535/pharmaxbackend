@@ -38,7 +38,20 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', auditLog('CREATE', 'Retailer'), async (req, res) => {
   try {
-    const retailer = await prisma.retailer.create({ data: req.body });
+    const data = { ...req.body };
+    
+    if (data.drugLicenseExpiry) data.drugLicenseExpiry = new Date(data.drugLicenseExpiry);
+    if (data.potentialScore) data.potentialScore = Number(data.potentialScore);
+    if (data.visitFrequency) data.visitFrequency = Number(data.visitFrequency);
+
+    if (!data.territoryId) {
+      const userTerritory = await prisma.userTerritory.findFirst({
+        where: { userId: req.user!.userId }
+      });
+      if (userTerritory) data.territoryId = userTerritory.territoryId;
+    }
+
+    const retailer = await prisma.retailer.create({ data });
     res.status(201).json({ success: true, data: retailer });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
