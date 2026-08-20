@@ -1,0 +1,768 @@
+// This is your Prisma schema file for the Pharmax platform
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  MR                  // Medical Representative
+  TRADE_REP           // Trade Representative / TSO
+  DISTRIBUTOR_REP     // Distributor Sales Representative
+  ASM                 // Area Sales Manager
+  RSM                 // Regional Sales Manager
+  ZM                  // Zonal Manager
+  NSM                 // National Sales Manager
+  PRODUCT_MANAGER
+  MARKETING
+  SALES_ADMIN
+  SUPER_ADMIN
+}
+
+enum VisitType {
+  DOCTOR
+  RETAILER
+  DISTRIBUTOR
+  HOSPITAL
+}
+
+enum VisitStatus {
+  PLANNED
+  CHECKED_IN
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum OrderStatus {
+  DRAFT
+  SUBMITTED
+  PROCESSING
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+}
+
+enum ExpenseType {
+  TA        // Travel Allowance
+  DA        // Daily Allowance
+  ACCOMMODATION
+  ENTERTAINMENT
+  MISCELLANEOUS
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+}
+
+enum ContentType {
+  PDF
+  VIDEO
+  IMAGE
+  PRESENTATION
+  ANIMATION
+}
+
+enum DoctorClassification {
+  A_PLUS
+  A
+  B
+  C
+}
+
+// ─── Core Auth & User Models ─────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          UserRole
+  employeeId    String?  @unique
+  designation   String?
+  profilePhoto  String?
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  territories     UserTerritory[]
+  refreshTokens   RefreshToken[]
+  visits          Visit[]           @relation("VisitCreatedBy")
+  managedVisits   Visit[]           @relation("VisitApprovedBy")
+  expenses        Expense[]
+  attendances     Attendance[]
+  leaves          Leave[]
+  samples         SampleDistribution[]
+  orders          Order[]
+  tourPlans       TourPlan[]
+  notifications   Notification[]    @relation("NotificationTo")
+  sentNotifs      Notification[]    @relation("NotificationFrom")
+  auditLogs       AuditLog[]
+  quizAttempts    QuizAttempt[]
+  contentViews    ContentView[]
+  retailAudits    RetailAudit[]
+  manager         User?             @relation("ManagerReports", fields: [managerId], references: [id])
+  managerId       String?
+  reports         User[]            @relation("ManagerReports")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  isRevoked Boolean  @default(false)
+
+  @@map("refresh_tokens")
+}
+
+// ─── Territory Models ────────────────────────────────────────────────────────
+
+model Territory {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  state       String
+  region      String?
+  zone        String?
+  parentId    String?
+  parent      Territory?  @relation("TerritoryHierarchy", fields: [parentId], references: [id])
+  children    Territory[] @relation("TerritoryHierarchy")
+  users       UserTerritory[]
+  beats       Beat[]
+  doctors     Doctor[]
+  hospitals   Hospital[]
+  retailers   Retailer[]
+  distributors Distributor[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("territories")
+}
+
+model UserTerritory {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  territoryId String
+  territory   Territory @relation(fields: [territoryId], references: [id])
+  isPrimary   Boolean   @default(true)
+  assignedAt  DateTime  @default(now())
+
+  @@unique([userId, territoryId])
+  @@map("user_territories")
+}
+
+model Beat {
+  id          String    @id @default(uuid())
+  name        String
+  code        String?
+  territoryId String
+  territory   Territory @relation(fields: [territoryId], references: [id])
+  tourPlans   TourPlan[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("beats")
+}
+
+// ─── Doctor CRM ──────────────────────────────────────────────────────────────
+
+model Doctor {
+  id                  String               @id @default(uuid())
+  salutation          String?
+  firstName           String
+  lastName            String
+  specialty           String
+  subSpecialty        String?
+  qualification       String?
+  classification      DoctorClassification @default(B)
+  prescriptionPotential Int               @default(0)
+  phone               String?
+  email               String?
+  address             String?
+  city                String?
+  state               String?
+  pincode             String?
+  territoryId         String?
+  territory           Territory?           @relation(fields: [territoryId], references: [id])
+  hospitalId          String?
+  hospital            Hospital?            @relation(fields: [hospitalId], references: [id])
+  isKol               Boolean              @default(false)
+  kolCategory         String?
+  visitFrequency      Int                  @default(1) // times per month
+  lastVisitDate       DateTime?
+  nextFollowUpDate    DateTime?
+  notes               String?
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+
+  visits              Visit[]
+  sampleDistributions SampleDistribution[]
+  tags                DoctorTag[]
+
+  @@map("doctors")
+}
+
+model DoctorTag {
+  id       String @id @default(uuid())
+  doctorId String
+  doctor   Doctor @relation(fields: [doctorId], references: [id])
+  tag      String
+
+  @@unique([doctorId, tag])
+  @@map("doctor_tags")
+}
+
+// ─── Hospital CRM ────────────────────────────────────────────────────────────
+
+model Hospital {
+  id            String    @id @default(uuid())
+  name          String
+  type          String?   // govt, private, corporate
+  beds          Int?
+  departments   String[]  // JSON array of dept names
+  address       String?
+  city          String?
+  state         String?
+  pincode       String?
+  phone         String?
+  email         String?
+  territoryId   String?
+  territory     Territory? @relation(fields: [territoryId], references: [id])
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  doctors       Doctor[]
+  visits        Visit[]
+
+  @@map("hospitals")
+}
+
+// ─── Retailer/Pharmacy CRM ───────────────────────────────────────────────────
+
+model Retailer {
+  id                String    @id @default(uuid())
+  name              String
+  ownerName         String?
+  pharmacistName    String?
+  phone             String?
+  email             String?
+  address           String
+  city              String?
+  state             String?
+  pincode           String?
+  gstNumber         String?
+  drugLicenseNumber String?
+  drugLicenseExpiry DateTime?
+  category          String?   // A, B, C
+  potentialScore    Int       @default(0)
+  visitFrequency    Int       @default(2) // times per month
+  lastVisitDate     DateTime?
+  distributorId     String?
+  distributor       Distributor? @relation(fields: [distributorId], references: [id])
+  territoryId       String?
+  territory         Territory?   @relation(fields: [territoryId], references: [id])
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  visits            Visit[]
+  orders            Order[]
+  retailAudits      RetailAudit[]
+
+  @@map("retailers")
+}
+
+// ─── Distributor CRM ────────────────────────────────────────────────────────
+
+model Distributor {
+  id              String    @id @default(uuid())
+  name            String
+  ownerName       String?
+  phone           String?
+  email           String?
+  address         String?
+  city            String?
+  state           String?
+  pincode         String?
+  gstNumber       String?
+  drugLicenseNumber String?
+  warehouseAddress  String?
+  creditLimit     Float     @default(0)
+  creditDays      Int       @default(30)
+  outstandingAmount Float   @default(0)
+  territoryId     String?
+  territory       Territory? @relation(fields: [territoryId], references: [id])
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  retailers       Retailer[]
+  visits          Visit[]
+  orders          Order[]
+
+  @@map("distributors")
+}
+
+// ─── Visit Reporting ─────────────────────────────────────────────────────────
+
+model Visit {
+  id              String      @id @default(uuid())
+  visitType       VisitType
+  status          VisitStatus @default(PLANNED)
+  
+  // Who & When
+  userId          String
+  user            User        @relation("VisitCreatedBy", fields: [userId], references: [id])
+  plannedDate     DateTime
+  checkInTime     DateTime?
+  checkOutTime    DateTime?
+  durationMinutes Int?
+
+  // GPS
+  checkInLat      Float?
+  checkInLng      Float?
+  checkInAddress  String?
+  checkOutLat     Float?
+  checkOutLng     Float?
+
+  // Target entity (polymorphic)
+  doctorId        String?
+  doctor          Doctor?     @relation(fields: [doctorId], references: [id])
+  hospitalId      String?
+  hospital        Hospital?   @relation(fields: [hospitalId], references: [id])
+  retailerId      String?
+  retailer        Retailer?   @relation(fields: [retailerId], references: [id])
+  distributorId   String?
+  distributor     Distributor? @relation(fields: [distributorId], references: [id])
+
+  // Content
+  productsDiscussed String[]
+  objectionsRaised  String?
+  competitorActivity String?
+  doctorFeedback    String?
+  nextFollowUpDate  DateTime?
+  notes             String?
+
+  // AI-generated
+  aiSummary         String?
+  aiNextActions     String?
+
+  // Approval
+  approvalStatus    ApprovalStatus @default(PENDING)
+  approvedById      String?
+  approvedBy        User?     @relation("VisitApprovedBy", fields: [approvedById], references: [id])
+  approvedAt        DateTime?
+  rejectionReason   String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  attachments       VisitAttachment[]
+  sampleDistributions SampleDistribution[]
+  orders            Order[]
+
+  @@map("visits")
+}
+
+model VisitAttachment {
+  id        String @id @default(uuid())
+  visitId   String
+  visit     Visit  @relation(fields: [visitId], references: [id])
+  fileUrl   String
+  fileType  String // image, audio, document
+  fileName  String
+  aiTranscription String? // for audio files
+  createdAt DateTime @default(now())
+
+  @@map("visit_attachments")
+}
+
+// ─── Tour Planning ───────────────────────────────────────────────────────────
+
+model TourPlan {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  beatId          String?
+  beat            Beat?          @relation(fields: [beatId], references: [id])
+  planDate        DateTime
+  planMonth       String         // "2024-01"
+  approvalStatus  ApprovalStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("tour_plans")
+}
+
+// ─── Sample Management ───────────────────────────────────────────────────────
+
+model SampleProduct {
+  id              String   @id @default(uuid())
+  name            String
+  code            String   @unique
+  batchNumber     String?
+  expiryDate      DateTime?
+  openingBalance  Int      @default(0)
+  currentBalance  Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  distributions   SampleDistribution[]
+
+  @@map("sample_products")
+}
+
+model SampleDistribution {
+  id            String        @id @default(uuid())
+  sampleProductId String
+  sampleProduct SampleProduct @relation(fields: [sampleProductId], references: [id])
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  doctorId      String?
+  doctor        Doctor?       @relation(fields: [doctorId], references: [id])
+  visitId       String?
+  visit         Visit?        @relation(fields: [visitId], references: [id])
+  quantity      Int
+  batchNumber   String?
+  distributedAt DateTime      @default(now())
+  notes         String?
+
+  @@map("sample_distributions")
+}
+
+// ─── Order Management ────────────────────────────────────────────────────────
+
+model Product {
+  id          String  @id @default(uuid())
+  name        String
+  code        String  @unique
+  description String?
+  mrp         Float
+  ptr         Float   // Price to retailer
+  pts         Float   // Price to stockist/distributor
+  unit        String  @default("Strip")
+  category    String?
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderItems  OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @unique @default(cuid())
+  status        OrderStatus @default(DRAFT)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  retailerId    String?
+  retailer      Retailer?   @relation(fields: [retailerId], references: [id])
+  distributorId String?
+  distributor   Distributor? @relation(fields: [distributorId], references: [id])
+  visitId       String?
+  visit         Visit?      @relation(fields: [visitId], references: [id])
+  totalAmount   Float       @default(0)
+  discount      Float       @default(0)
+  notes         String?
+  expectedDeliveryDate DateTime?
+  deliveredAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  items         OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id])
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  quantity    Int
+  unitPrice   Float
+  discount    Float   @default(0)
+  totalPrice  Float
+
+  @@map("order_items")
+}
+
+// ─── Trade Promotion / Schemes ───────────────────────────────────────────────
+
+model Scheme {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  type        String    // cashback, free_goods, display_incentive, loyalty
+  startDate   DateTime
+  endDate     DateTime
+  targetRole  String?   // retailer, distributor
+  minPurchase Float?
+  reward      String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("schemes")
+}
+
+// ─── Expenses ────────────────────────────────────────────────────────────────
+
+model Expense {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  expenseType   ExpenseType
+  amount        Float
+  description   String?
+  expenseDate   DateTime
+  receiptUrl    String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedAt    DateTime?
+  rejectionReason String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("expenses")
+}
+
+// ─── Attendance & Leave ──────────────────────────────────────────────────────
+
+model Attendance {
+  id          String           @id @default(uuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  date        DateTime
+  status      AttendanceStatus
+  checkInTime DateTime?
+  checkOutTime DateTime?
+  checkInLat  Float?
+  checkInLng  Float?
+  notes       String?
+  createdAt   DateTime         @default(now())
+
+  @@unique([userId, date])
+  @@map("attendances")
+}
+
+model Leave {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  leaveType     String         // casual, sick, earned
+  startDate     DateTime
+  endDate       DateTime
+  reason        String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("leaves")
+}
+
+// ─── Training ────────────────────────────────────────────────────────────────
+
+model TrainingModule {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  contentUrl  String?
+  contentType ContentType @default(PDF)
+  duration    Int?     // minutes
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quizzes     Quiz[]
+  attempts    QuizAttempt[]
+
+  @@map("training_modules")
+}
+
+model Quiz {
+  id          String         @id @default(uuid())
+  moduleId    String
+  module      TrainingModule @relation(fields: [moduleId], references: [id])
+  question    String
+  options     String[]
+  correctAnswer Int
+  explanation String?
+
+  @@map("quizzes")
+}
+
+model QuizAttempt {
+  id          String         @id @default(uuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  moduleId    String
+  module      TrainingModule @relation(fields: [moduleId], references: [id])
+  score       Int
+  totalScore  Int
+  passed      Boolean
+  completedAt DateTime       @default(now())
+
+  @@map("quiz_attempts")
+}
+
+// ─── Content / Digital Detailing ────────────────────────────────────────────
+
+model Content {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  contentType ContentType
+  fileUrl     String
+  thumbnailUrl String?
+  productName String?
+  campaignId  String?
+  campaign    Campaign?   @relation(fields: [campaignId], references: [id])
+  version     String      @default("1.0")
+  isActive    Boolean     @default(true)
+  isDisabled  Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  views       ContentView[]
+
+  @@map("contents")
+}
+
+model ContentView {
+  id        String   @id @default(uuid())
+  contentId String
+  content   Content  @relation(fields: [contentId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  viewedAt  DateTime @default(now())
+  duration  Int?     // seconds
+
+  @@map("content_views")
+}
+
+model Campaign {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  contents    Content[]
+
+  @@map("campaigns")
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id          String   @id @default(uuid())
+  toUserId    String
+  toUser      User     @relation("NotificationTo", fields: [toUserId], references: [id])
+  fromUserId  String?
+  fromUser    User?    @relation("NotificationFrom", fields: [fromUserId], references: [id])
+  title       String
+  body        String
+  type        String   // visit_reminder, approval, ai_insight, tour_plan, etc.
+  data        Json?
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// ─── Retail Audit ────────────────────────────────────────────────────────────
+
+model RetailAudit {
+  id                  String    @id @default(uuid())
+  retailerId          String
+  retailer            Retailer  @relation(fields: [retailerId], references: [id])
+  userId              String
+  user                User      @relation(fields: [userId], references: [id])
+  auditDate           DateTime  @default(now())
+  
+  // Shelf & Visibility
+  shelfSharePercent   Float?    // 0-100
+  productPlacement    Int?      // 1-5 score
+  priceCompliance     Boolean   @default(false)
+  competitorVisibility Boolean  @default(false)
+  
+  // Stock
+  stockAvailability   String[]  // product names in stock
+  outOfStock          String[]  // product names out of stock
+  displayCompliance   Boolean   @default(false)
+  
+  // Competitor
+  competitorSchemes   String?
+  
+  // Overall
+  totalScore          Int       @default(0) // 0-100
+  notes               String?
+  photoUrls           String[]
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("retail_audits")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  action      String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT
+  entity      String   // Table name
+  entityId    String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+}
