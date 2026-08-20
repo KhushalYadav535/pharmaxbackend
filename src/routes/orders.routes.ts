@@ -33,9 +33,40 @@ router.get('/:id', async (req, res) => {
 router.post('/', auditLog('CREATE', 'Order'), async (req, res) => {
   try {
     const { items, ...orderData } = req.body;
-    const total = items?.reduce((sum: number, i: any) => sum + i.totalPrice, 0) || 0;
+    
+    const processedItems = [];
+    if (items && Array.isArray(items)) {
+      for (const item of items) {
+        if (item.productName) {
+          let product = await prisma.product.findFirst({
+            where: { name: { equals: item.productName, mode: 'insensitive' } }
+          });
+          
+          if (!product) {
+            product = await prisma.product.create({
+              data: {
+                name: item.productName,
+                code: 'PRD-' + Date.now() + Math.floor(Math.random() * 1000),
+                mrp: Number(item.unitPrice) || 0,
+                ptr: Number(item.unitPrice) || 0,
+                pts: Number(item.unitPrice) || 0,
+              }
+            });
+          }
+          
+          processedItems.push({
+            productId: product.id,
+            quantity: Number(item.quantity) || 1,
+            unitPrice: Number(item.unitPrice) || 0,
+            totalPrice: Number(item.totalPrice) || 0,
+          });
+        }
+      }
+    }
+
+    const total = processedItems.reduce((sum, i) => sum + i.totalPrice, 0);
     const order = await prisma.order.create({
-      data: { ...orderData, userId: req.user!.userId, totalAmount: total, items: { create: items || [] } },
+      data: { ...orderData, userId: req.user!.userId, totalAmount: total, items: { create: processedItems } },
       include: { items: { include: { product: true } } },
     });
     res.status(201).json({ success: true, data: order });
