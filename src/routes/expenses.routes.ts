@@ -17,8 +17,20 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const data = { ...req.body, userId: req.user!.userId };
-    if (data.expenseDate) data.expenseDate = new Date(data.expenseDate);
+    const { expenseType, amount, description, expenseDate, receiptUrl, fromCity, toCity } = req.body;
+    let finalDescription = description || '';
+    if (fromCity && toCity) {
+      finalDescription = `Travel: ${fromCity} to ${toCity}` + (finalDescription ? ` - ${finalDescription}` : '');
+    }
+
+    const data = { 
+      expenseType, 
+      amount: Number(amount), 
+      description: finalDescription, 
+      expenseDate: expenseDate ? new Date(expenseDate) : new Date(), 
+      receiptUrl,
+      userId: req.user!.userId 
+    };
     const expense = await prisma.expense.create({ data });
     res.status(201).json({ success: true, data: expense });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
