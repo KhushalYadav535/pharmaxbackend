@@ -137,7 +137,10 @@ router.get('/stats/summary', async (req, res) => {
       }),
     ]);
     res.json({ success: true, data: { totalAudits, avgScore: avgScore._avg.totalScore || 0, recentAudits } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err: any) { 
+    console.error('Error in retail-audit/stats/summary:', err);
+    res.status(500).json({ success: false, message: err.message || String(err), stack: err.stack }); 
+  }
 });
 
 export default router;
