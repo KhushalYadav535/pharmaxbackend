@@ -21,7 +21,9 @@ export interface CheckInInput {
 
 export const visitService = {
   async list(filters: any, userId: string, userRole: string) {
-    const { page = 1, limit = 20, status, visitType, fromDate, toDate, doctorId } = filters;
+    let { page = 1, limit = 20, status, visitType, fromDate, toDate, doctorId } = filters;
+    page = Number(page) || 1;
+    limit = Number(limit) || 20;
 
     const where: Prisma.VisitWhereInput = {
       ...(status && { status }),
