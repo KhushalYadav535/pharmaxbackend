@@ -17,7 +17,9 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const expense = await prisma.expense.create({ data: { ...req.body, userId: req.user!.userId } });
+    const data = { ...req.body, userId: req.user!.userId };
+    if (data.expenseDate) data.expenseDate = new Date(data.expenseDate);
+    const expense = await prisma.expense.create({ data });
     res.status(201).json({ success: true, data: expense });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
