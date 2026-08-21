@@ -11,10 +11,10 @@ try {
 }
 
 try {
-  console.log('\n2. Deploying database migrations...');
-  execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+  console.log('\n2. Syncing database schema with prisma db push...');
+  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
 } catch (e) {
-  console.error('CRITICAL: Migration deploy failed!');
+  console.error('CRITICAL: Database sync failed!');
   process.exit(1);
 }
 
