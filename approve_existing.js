@@ -1,7 +1,8 @@
 const { Client } = require('pg');
 
 async function main() {
-  const client = new Client({ connectionString: 'postgresql://postgres:root@localhost:5432/pharma' });
+  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:root@localhost:5432/pharma';
+  const client = new Client({ connectionString });
   await client.connect();
   
   await client.query('UPDATE doctors SET "approvalStatus" = \'APPROVED\'');
