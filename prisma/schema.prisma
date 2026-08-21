@@ -876,7 +876,7 @@ model TourPlan {
   beat       Beat?      @relation(fields: [beatId], references: [id])
 
   // FFMS Tour Planning Fields
-  tourFromDate   DateTime // Tour From Date (Mandatory)
+  tourFromDate   DateTime  @default(now()) // Tour From Date (Mandatory)
   tourToDate     DateTime? // Tour To Date
   tourPurpose    String? // Tour Purpose (Mandatory)
   jointVisit     Boolean   @default(false) // Joint Visit (Mandatory radio)
