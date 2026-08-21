@@ -32,18 +32,26 @@ router.get('/', async (req, res) => {
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Create tour plan entry
+// Create tour plan entry (FFMS: tourFromDate mandatory)
 router.post('/', auditLog('CREATE', 'TourPlan'), async (req, res) => {
   try {
-    const { planDate, beatId, notes, planMonth } = req.body;
-    const d = new Date(planDate);
-    const month = planMonth || `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const { planDate, tourFromDate, tourToDate, tourPurpose, jointVisit, jointVisitWith, beatId, locationId, areaId, hqId, notes, planMonth } = req.body;
+    const fromDate = new Date(tourFromDate || planDate);
+    const month = planMonth || `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}`;
     const plan = await prisma.tourPlan.create({
       data: {
         userId: req.user!.userId,
-        planDate: d,
+        tourFromDate: fromDate,
+        tourToDate: tourToDate ? new Date(tourToDate) : undefined,
+        tourPurpose,
+        jointVisit: jointVisit === true || jointVisit === 'true',
+        jointVisitWith,
+        planDate: fromDate,
         planMonth: month,
         beatId,
+        locationId,
+        areaId,
+        hqId,
         notes,
         approvalStatus: 'PENDING',
       },

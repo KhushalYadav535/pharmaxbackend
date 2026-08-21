@@ -7,6 +7,7 @@ export interface DoctorFilters {
   classification?: DoctorClassification;
   territoryId?: string;
   hospitalId?: string;
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   page?: number;
   limit?: number;
 }
@@ -14,13 +15,14 @@ export interface DoctorFilters {
 export const doctorService = {
   async list(filters: DoctorFilters, userId: string, userRole: string) {
     const {
-      search, specialty, classification, territoryId, hospitalId,
+      search, specialty, classification, territoryId, hospitalId, approvalStatus,
       page = 1, limit = 20,
     } = filters;
 
     const where: Prisma.DoctorWhereInput = {
       deletedAt: null,
       isActive: true,
+      approvalStatus: approvalStatus || 'APPROVED',
       ...(search && {
         OR: [
           { firstName: { contains: search, mode: 'insensitive' } },

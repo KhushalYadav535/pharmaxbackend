@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
   try {
     const { search, page = '1', limit = '20' } = req.query;
     const where: Prisma.DistributorWhereInput = {
-      deletedAt: null, isActive: true,
+      deletedAt: null, isActive: true, approvalStatus: (req.query.approvalStatus as any) || 'APPROVED',
       ...(search && { OR: [{ name: { contains: search as string, mode: 'insensitive' } }] }),
     };
     const p = parseInt(page as string); const l = parseInt(limit as string);
@@ -66,3 +66,4 @@ router.delete('/:id', auditLog('DELETE', 'Distributor'), async (req, res) => {
 });
 
 export default router;
+

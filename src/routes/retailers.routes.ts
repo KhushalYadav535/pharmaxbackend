@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
   try {
     const { search, page = '1', limit = '20', territoryId } = req.query;
     const where: Prisma.RetailerWhereInput = {
-      deletedAt: null, isActive: true,
+      deletedAt: null, isActive: true, approvalStatus: (req.query.approvalStatus as any) || 'APPROVED',
       ...(search && { OR: [{ name: { contains: search as string, mode: 'insensitive' } }, { ownerName: { contains: search as string, mode: 'insensitive' } }] }),
       ...(territoryId && { territoryId: territoryId as string }),
     };
@@ -71,3 +71,4 @@ router.delete('/:id', auditLog('DELETE', 'Retailer'), async (req, res) => {
 });
 
 export default router;
+

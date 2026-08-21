@@ -26,6 +26,16 @@ import approvalsRoutes from './routes/approvals.routes';
 import contentRoutes from './routes/content.routes';
 import schemesRoutes from './routes/schemes.routes';
 import retailAuditRoutes from './routes/retail-audit.routes';
+// FFMS New Routes
+import locationRoutes from './routes/locations.routes';
+import areaRoutes from './routes/areas.routes';
+import cfaRoutes from './routes/cfa.routes';
+import stockistRoutes from './routes/stockists.routes';
+import stockReportRoutes from './routes/stockreports.routes';
+import taskRoutes from './routes/tasks.routes';
+import surveyRoutes from './routes/surveys.routes';
+import targetRoutes from './routes/targets.routes';
+import dailyReportRoutes from './routes/dailyreports.routes';
 
 const app = express();
 
@@ -74,6 +84,16 @@ app.use(`${API}/approvals`, approvalsRoutes);
 app.use(`${API}/content`, contentRoutes);
 app.use(`${API}/schemes`, schemesRoutes);
 app.use(`${API}/retail-audit`, retailAuditRoutes);
+// FFMS New Routes
+app.use(`${API}/locations`, locationRoutes);
+app.use(`${API}/areas`, areaRoutes);
+app.use(`${API}/cfas`, cfaRoutes);
+app.use(`${API}/stockists`, stockistRoutes);
+app.use(`${API}/stock-reports`, stockReportRoutes);
+app.use(`${API}/tasks`, taskRoutes);
+app.use(`${API}/surveys`, surveyRoutes);
+app.use(`${API}/targets`, targetRoutes);
+app.use(`${API}/daily-reports`, dailyReportRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
   try {
     const { search, page = '1', limit = '20' } = req.query;
     const where: Prisma.HospitalWhereInput = {
-      deletedAt: null, isActive: true,
+      deletedAt: null, isActive: true, approvalStatus: (req.query.approvalStatus as any) || 'APPROVED',
       ...(search && { name: { contains: search as string, mode: 'insensitive' } }),
     };
     const p = parseInt(page as string); const l = parseInt(limit as string);
@@ -71,3 +71,4 @@ router.put('/:id', auditLog('UPDATE', 'Hospital'), async (req, res) => {
 });
 
 export default router;
+
