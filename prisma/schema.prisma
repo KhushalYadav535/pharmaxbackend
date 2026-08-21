@@ -377,6 +377,12 @@ model Visit {
   nextFollowUpDate  DateTime?
   notes             String?
 
+  // New CRM Report Fields
+  visitObjective    String[]
+  engagement        String?
+  businessSignal    String[]
+  followUpAction    String?
+
   // AI-generated
   aiSummary         String?
   aiNextActions     String?

@@ -114,7 +114,7 @@ export const visitService = {
     });
   },
 
-  async checkOut(id: string, input: CheckInInput & { notes?: string; productsDiscussed?: string[]; objectionsRaised?: string; nextFollowUpDate?: string }) {
+  async checkOut(id: string, input: CheckInInput & { notes?: string; productsDiscussed?: string[]; objectionsRaised?: string; nextFollowUpDate?: string; visitObjective?: string[]; engagement?: string; businessSignal?: string[]; followUpAction?: string }) {
     const visit = await prisma.visit.findUnique({ where: { id }, select: { checkInTime: true } });
     const checkOutTime = new Date();
     const durationMinutes = visit?.checkInTime
@@ -133,6 +133,10 @@ export const visitService = {
         productsDiscussed: input.productsDiscussed,
         objectionsRaised: input.objectionsRaised,
         nextFollowUpDate: input.nextFollowUpDate ? new Date(input.nextFollowUpDate) : undefined,
+        visitObjective: input.visitObjective || [],
+        engagement: input.engagement,
+        businessSignal: input.businessSignal || [],
+        followUpAction: input.followUpAction,
       },
     });
   },
