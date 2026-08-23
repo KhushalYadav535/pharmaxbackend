@@ -655,7 +655,7 @@ model RetailerProduct {
 // ─── Distributor CRM (kept, Stockist is separate per FFMS) ──────────────────
 
 model Distributor {
-  id                String     @id @default(uuid())
+  id                String         @id @default(uuid())
   name              String
   ownerName         String?
   phone             String?
@@ -667,15 +667,15 @@ model Distributor {
   gstNumber         String?
   drugLicenseNumber String?
   warehouseAddress  String?
-  creditLimit       Float      @default(0)
-  creditDays        Int        @default(30)
-  outstandingAmount Float      @default(0)
+  creditLimit       Float          @default(0)
+  creditDays        Int            @default(30)
+  outstandingAmount Float          @default(0)
   territoryId       String?
-  territory         Territory? @relation(fields: [territoryId], references: [id])
+  territory         Territory?     @relation(fields: [territoryId], references: [id])
   approvalStatus    ApprovalStatus @default(PENDING)
-  isActive          Boolean    @default(true)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
   deletedAt         DateTime?
 
   retailers Retailer[]

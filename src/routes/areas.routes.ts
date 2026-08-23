@@ -9,4 +9,5 @@ router.get('/:id', areaController.getById);
 router.post('/', areaController.create);
 router.put('/:id', areaController.update);
 router.patch('/:id/deactivate', areaController.deactivate);
+router.patch('/:id/reactivate', areaController.reactivate);
 export default router;

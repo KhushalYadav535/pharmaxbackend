@@ -32,4 +32,8 @@ export const areaService = {
   async deactivate(id: string) {
     return prisma.area.update({ where: { id }, data: { isActive: false } });
   },
+
+  async reactivate(id: string) {
+    return prisma.area.update({ where: { id }, data: { isActive: true } });
+  },
 };

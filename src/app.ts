@@ -36,6 +36,8 @@ import taskRoutes from './routes/tasks.routes';
 import surveyRoutes from './routes/surveys.routes';
 import targetRoutes from './routes/targets.routes';
 import dailyReportRoutes from './routes/dailyreports.routes';
+import interiorRoutes from './routes/interiors.routes';
+import employeeRoutes from './routes/employees.routes';
 
 const app = express();
 
@@ -94,6 +96,8 @@ app.use(`${API}/tasks`, taskRoutes);
 app.use(`${API}/surveys`, surveyRoutes);
 app.use(`${API}/targets`, targetRoutes);
 app.use(`${API}/daily-reports`, dailyReportRoutes);
+app.use(`${API}/interiors`, interiorRoutes);
+app.use(`${API}/employees`, employeeRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

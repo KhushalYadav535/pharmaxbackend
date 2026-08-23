@@ -31,4 +31,12 @@ export const locationService = {
   async deactivate(id: string) {
     return prisma.location.update({ where: { id }, data: { isActive: false } });
   },
+
+  async reactivate(id: string) {
+    return prisma.location.update({ where: { id }, data: { isActive: true } });
+  },
+
+  async deleteById(id: string) {
+    return prisma.location.delete({ where: { id } });
+  },
 };

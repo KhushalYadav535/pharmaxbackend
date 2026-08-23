@@ -33,4 +33,16 @@ export const locationController = {
       res.json({ success: true, message: 'Location deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
+  async reactivate(req: Request, res: Response) {
+    try {
+      await locationService.reactivate(req.params.id as string);
+      res.json({ success: true, message: 'Location reactivated' });
+    } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+  },
+  async deleteById(req: Request, res: Response) {
+    try {
+      await locationService.deleteById(req.params.id as string);
+      res.json({ success: true, message: 'Location deleted' });
+    } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+  },
 };
