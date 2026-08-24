@@ -26,7 +26,7 @@ export const interiorService = {
     return prisma.interior.findUnique({ where: { id }, include: { location: true } });
   },
 
-  async create(data: { name: string; district?: string; state?: string; pinCode?: string; locationId?: string }) {
+  async create(data: any) {
     const count = await prisma.interior.count();
     const interiorCode = `INT${String(count + 1).padStart(5, '0')}`;
     return prisma.interior.create({ data: { ...data, interiorCode } });

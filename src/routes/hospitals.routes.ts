@@ -33,20 +33,35 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', auditLog('CREATE', 'Hospital'), async (req, res) => {
   try {
-    const { name, category, type, city, state, phone, beds, isActive, territoryId } = req.body;
+    const { name, category, type, city, district, state, phone, beds, isActive, territoryId, hqId, cfaId, gstinNumber, panNumber, geoTag, visitDays, productIds } = req.body;
     
     // Support either 'category' from frontend or 'type' directly
-    const hospitalType = category || type;
+    const hospitalType = type; // Keep type separate, category is now its own field
 
     const data: any = {
-      name,
+      ...req.body,
       type: hospitalType,
+      category,
       city,
+      district,
       state,
       phone,
+      hqId,
+      cfaId,
+      gstinNumber,
+      panNumber,
+      geoTag,
+      visitDays: visitDays || [],
       beds: beds ? Number(beds) : undefined,
       isActive: isActive !== undefined ? isActive : true,
     };
+
+    if (productIds && productIds.length > 0) {
+      data.productsSelected = {
+        create: productIds.map((id: string) => ({ productId: id }))
+      };
+      delete data.productIds;
+    }
 
     if (territoryId) {
       data.territoryId = territoryId;
@@ -65,7 +80,17 @@ router.post('/', auditLog('CREATE', 'Hospital'), async (req, res) => {
 
 router.put('/:id', auditLog('UPDATE', 'Hospital'), async (req, res) => {
   try {
-    const h = await prisma.hospital.update({ where: { id: req.params.id as string }, data: req.body });
+    const { productIds, ...updateData } = req.body;
+    const data: any = { ...updateData };
+
+    if (productIds) {
+      data.productsSelected = {
+        deleteMany: {},
+        create: productIds.map((id: string) => ({ productId: id }))
+      };
+    }
+
+    const h = await prisma.hospital.update({ where: { id: req.params.id as string }, data });
     res.json({ success: true, data: h });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });

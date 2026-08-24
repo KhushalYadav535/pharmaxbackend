@@ -17,13 +17,28 @@ export const stockistController = {
   },
   async create(req: Request, res: Response) {
     try {
-      const item = await stockistService.create(req.body);
+      const { productIds, ...bodyData } = req.body;
+      const data: any = { ...bodyData };
+      if (productIds && productIds.length > 0) {
+        data.productsSelected = {
+          create: productIds.map((id: string) => ({ productId: id }))
+        };
+      }
+      const item = await stockistService.create(data);
       res.status(201).json({ success: true, data: item });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async update(req: Request, res: Response) {
     try {
-      const item = await stockistService.update(req.params.id as string, req.body);
+      const { productIds, ...updateData } = req.body;
+      const data: any = { ...updateData };
+      if (productIds) {
+        data.productsSelected = {
+          deleteMany: {},
+          create: productIds.map((id: string) => ({ productId: id }))
+        };
+      }
+      const item = await stockistService.update(req.params.id as string, data);
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },

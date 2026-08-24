@@ -37,7 +37,9 @@ import surveyRoutes from './routes/surveys.routes';
 import targetRoutes from './routes/targets.routes';
 import dailyReportRoutes from './routes/dailyreports.routes';
 import interiorRoutes from './routes/interiors.routes';
+import productRoutes from './routes/products.routes';
 import employeeRoutes from './routes/employees.routes';
+import headquarterRoutes from './routes/headquarters.routes';
 
 const app = express();
 
@@ -89,6 +91,7 @@ app.use(`${API}/retail-audit`, retailAuditRoutes);
 // FFMS New Routes
 app.use(`${API}/locations`, locationRoutes);
 app.use(`${API}/areas`, areaRoutes);
+app.use(`${API}/products`, productRoutes);
 app.use(`${API}/cfas`, cfaRoutes);
 app.use(`${API}/stockists`, stockistRoutes);
 app.use(`${API}/stock-reports`, stockReportRoutes);
@@ -98,6 +101,7 @@ app.use(`${API}/targets`, targetRoutes);
 app.use(`${API}/daily-reports`, dailyReportRoutes);
 app.use(`${API}/interiors`, interiorRoutes);
 app.use(`${API}/employees`, employeeRoutes);
+app.use(`${API}/headquarters`, headquarterRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

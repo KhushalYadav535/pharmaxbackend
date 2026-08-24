@@ -5,10 +5,34 @@ const EMPLOYEE_SELECT = {
   id: true,
   email: true,
   firstName: true,
+  middleName: true,
   lastName: true,
   phone: true,
   role: true,
   employeeId: true,
+  // FFMS Employee Master fields
+  qualification: true,
+  gender: true,
+  maritalStatus: true,
+  address1: true,
+  address2: true,
+  city: true,
+  district: true,
+  state: true,
+  pin: true,
+  whatsappNumber: true,
+  dateOfBirth: true,
+  marriageAnniversary: true,
+  facebook: true,
+  instagram: true,
+  twitter: true,
+  linkedin: true,
+  spouseName: true,
+  dependents: true,
+  aadharNumber: true,
+  panNumber: true,
+  grade: true,
+  // Employment fields
   designation: true,
   department: true,
   dateOfJoining: true,
@@ -19,20 +43,39 @@ const EMPLOYEE_SELECT = {
   updatedAt: true,
   managerId: true,
   manager: { select: { id: true, firstName: true, lastName: true, role: true } },
+  hqId: true,
+  hq: { select: { id: true, name: true, code: true } },
   territories: {
     include: { territory: { select: { id: true, name: true, code: true } } },
   },
 } as const;
 
+// Fields that are date strings and need conversion
+const DATE_FIELDS = ['dateOfJoining', 'dateOfBirth', 'marriageAnniversary'] as const;
+
+function parseEmployeeData(data: any) {
+  const parsed: any = { ...data };
+  for (const f of DATE_FIELDS) {
+    if (parsed[f] !== undefined) {
+      parsed[f] = parsed[f] ? new Date(parsed[f]) : null;
+    }
+  }
+  if (parsed.dependents !== undefined) {
+    parsed.dependents = parsed.dependents !== '' && parsed.dependents !== null ? Number(parsed.dependents) : null;
+  }
+  return parsed;
+}
+
 export const employeeService = {
   async list(filters: any) {
-    const { page = 1, limit = 20, search, role, isActive, managerId } = filters;
+    const { page = 1, limit = 20, search, role, isActive, managerId, hqId } = filters;
     const p = Number(page), l = Number(limit);
     const where: any = { deletedAt: null };
 
     if (role) where.role = role;
     if (isActive !== undefined) where.isActive = isActive === 'true';
     if (managerId) where.managerId = managerId;
+    if (hqId) where.hqId = hqId;
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
@@ -64,61 +107,63 @@ export const employeeService = {
     });
   },
 
-  async create(data: {
-    email: string;
-    password: string;
-    firstName: string;
-    lastName: string;
-    phone?: string;
-    role: string;
-    designation?: string;
-    department?: string;
-    dateOfJoining?: string;
-    profilePhoto?: string;
-    managerId?: string;
-  }) {
-    const { password, dateOfJoining, ...rest } = data;
+  async create(data: any) {
+    const { password, hqIds, ...rest } = data;
     const passwordHash = await bcrypt.hash(password, 12);
 
     // Auto-generate employee ID
     const count = await prisma.user.count({ where: { deletedAt: null } });
     const employeeId = `EMP${String(count + 1).padStart(5, '0')}`;
 
+    const parsed = parseEmployeeData(rest);
+
     return prisma.user.create({
       data: {
-        ...rest,
+        ...parsed,
         passwordHash,
         employeeId,
-        role: rest.role as any,
-        dateOfJoining: dateOfJoining ? new Date(dateOfJoining) : undefined,
+        role: parsed.role as any,
+        gender: parsed.gender as any,
+        maritalStatus: parsed.maritalStatus as any,
+        territories: hqIds && Array.isArray(hqIds) ? {
+          create: hqIds.map((tid: string, index: number) => ({
+            territoryId: tid,
+            isPrimary: index === 0,
+          }))
+        } : undefined,
       },
       select: EMPLOYEE_SELECT,
     });
   },
+  async update(id: string, data: any) {
+    const { hqIds, ...rest } = data;
+    const parsed = parseEmployeeData(rest);
+    
+    // Manage territories if hqIds provided
+    if (hqIds && Array.isArray(hqIds)) {
+      await prisma.userTerritory.deleteMany({ where: { userId: id } });
+      if (hqIds.length > 0) {
+        await prisma.userTerritory.createMany({
+          data: hqIds.map((tid: string, index: number) => ({
+            userId: id,
+            territoryId: tid,
+            isPrimary: index === 0,
+          }))
+        });
+      }
+    }
 
-  async update(id: string, data: {
-    firstName?: string;
-    lastName?: string;
-    phone?: string;
-    role?: string;
-    designation?: string;
-    department?: string;
-    dateOfJoining?: string;
-    profilePhoto?: string;
-    managerId?: string;
-  }) {
-    const { dateOfJoining, ...rest } = data;
     return prisma.user.update({
       where: { id },
       data: {
-        ...rest,
-        role: rest.role as any,
-        dateOfJoining: dateOfJoining ? new Date(dateOfJoining) : undefined,
+        ...parsed,
+        role: parsed.role as any,
+        gender: parsed.gender as any,
+        maritalStatus: parsed.maritalStatus as any,
       },
       select: EMPLOYEE_SELECT,
     });
   },
-
   async deactivate(id: string) {
     return prisma.user.update({ where: { id }, data: { isActive: false }, select: { id: true, isActive: true } });
   },

@@ -19,7 +19,7 @@ export const areaService = {
     return prisma.area.findUnique({ where: { id }, include: { location: true, hq: true } });
   },
 
-  async create(data: { name: string; locationId?: string; hqId?: string }) {
+  async create(data: any) {
     const count = await prisma.area.count();
     const areaCode = `AREA${String(count + 1).padStart(5, '0')}`;
     return prisma.area.create({ data: { ...data, areaCode } });

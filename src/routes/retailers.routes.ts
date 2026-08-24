@@ -38,11 +38,18 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', auditLog('CREATE', 'Retailer'), async (req, res) => {
   try {
-    const data = { ...req.body };
+    const { productIds, ...bodyData } = req.body;
+    const data = { ...bodyData };
     
     if (data.drugLicenseExpiry) data.drugLicenseExpiry = new Date(data.drugLicenseExpiry);
     if (data.potentialScore) data.potentialScore = Number(data.potentialScore);
     if (data.visitFrequency) data.visitFrequency = Number(data.visitFrequency);
+
+    if (productIds && productIds.length > 0) {
+      data.productsSelected = {
+        create: productIds.map((id: string) => ({ productId: id }))
+      };
+    }
 
     if (!data.territoryId) {
       const userTerritory = await prisma.userTerritory.findFirst({
@@ -58,7 +65,16 @@ router.post('/', auditLog('CREATE', 'Retailer'), async (req, res) => {
 
 router.put('/:id', auditLog('UPDATE', 'Retailer'), async (req, res) => {
   try {
-    const retailer = await prisma.retailer.update({ where: { id: req.params.id as string }, data: req.body });
+    const { productIds, ...updateData } = req.body;
+    const data: any = { ...updateData };
+
+    if (productIds) {
+      data.productsSelected = {
+        deleteMany: {},
+        create: productIds.map((id: string) => ({ productId: id }))
+      };
+    }
+    const retailer = await prisma.retailer.update({ where: { id: req.params.id as string }, data });
     res.json({ success: true, data: retailer });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });

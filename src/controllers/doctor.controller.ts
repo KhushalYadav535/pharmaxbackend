@@ -36,8 +36,15 @@ export const doctorController = {
 
   async create(req: Request, res: Response) {
     try {
-      const data = { ...req.body };
+      const { productIds, ...bodyData } = req.body;
+      const data: any = { ...bodyData };
       
+      if (productIds && productIds.length > 0) {
+        data.productsSelected = {
+          create: productIds.map((id: string) => ({ productId: id }))
+        };
+      }
+
       // Auto-assign territory if not provided
       if (!data.territoryId) {
         const userTerritory = await prisma.userTerritory.findFirst({
@@ -57,7 +64,17 @@ export const doctorController = {
 
   async update(req: Request, res: Response) {
     try {
-      const doctor = await doctorService.update(req.params.id as string, req.body);
+      const { productIds, ...updateData } = req.body;
+      const data: any = { ...updateData };
+
+      if (productIds) {
+        data.productsSelected = {
+          deleteMany: {},
+          create: productIds.map((id: string) => ({ productId: id }))
+        };
+      }
+
+      const doctor = await doctorService.update(req.params.id as string, data);
       res.json({ success: true, data: doctor, message: 'Doctor updated successfully' });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
