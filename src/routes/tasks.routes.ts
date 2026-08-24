@@ -1,12 +1,16 @@
 import { Router } from 'express';
-import { authenticate } from '../middlewares/auth.middleware';
 import { taskController } from '../controllers/task.controller';
+import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
+
 router.use(authenticate);
+
 router.get('/', taskController.list);
-router.get('/:id', taskController.getById);
 router.post('/', taskController.create);
+router.get('/:id', taskController.getById);
 router.put('/:id', taskController.update);
-router.patch('/:id/complete', taskController.complete);
+router.patch('/:id/status', taskController.updateStatus);
+router.delete('/:id', taskController.delete);
+
 export default router;

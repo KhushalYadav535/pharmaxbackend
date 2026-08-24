@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import { targetService } from '../services/target.service';
+import { tourPlanService } from '../services/tourplan.service';
 
-export const targetController = {
+export const tourPlanController = {
   async list(req: Request, res: Response) {
     try {
-      const data = await targetService.list(req.query);
+      const data = await tourPlanService.list(req.query);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
@@ -13,17 +13,18 @@ export const targetController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await targetService.getById(req.params.id);
-      if (!data) return res.status(404).json({ success: false, message: 'Target not found' });
+      const data = await tourPlanService.getById(req.params.id);
       res.json({ success: true, data });
     } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+      res.status(404).json({ success: false, message: err.message });
     }
   },
 
   async create(req: Request, res: Response) {
     try {
-      const data = await targetService.create(req.body);
+      // req.user from auth middleware
+      const userId = (req as any).user?.userId;
+      const data = await tourPlanService.create(userId, req.body);
       res.status(201).json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -32,7 +33,16 @@ export const targetController = {
 
   async update(req: Request, res: Response) {
     try {
-      const data = await targetService.update(req.params.id, req.body);
+      const data = await tourPlanService.update(req.params.id, req.body);
+      res.json({ success: true, data });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  async updateStatus(req: Request, res: Response) {
+    try {
+      const data = await tourPlanService.updateStatus(req.params.id, req.body.status);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -41,8 +51,8 @@ export const targetController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await targetService.delete(req.params.id);
-      res.json({ success: true, message: 'Target deleted successfully' });
+      await tourPlanService.delete(req.params.id);
+      res.json({ success: true, message: 'Tour Plan deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }

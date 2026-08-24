@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import { targetService } from '../services/target.service';
+import { expenseService } from '../services/expense.service';
 
-export const targetController = {
+export const expenseController = {
   async list(req: Request, res: Response) {
     try {
-      const data = await targetService.list(req.query);
+      const data = await expenseService.list(req.query);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
@@ -13,17 +13,17 @@ export const targetController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await targetService.getById(req.params.id);
-      if (!data) return res.status(404).json({ success: false, message: 'Target not found' });
+      const data = await expenseService.getById(req.params.id);
       res.json({ success: true, data });
     } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+      res.status(404).json({ success: false, message: err.message });
     }
   },
 
   async create(req: Request, res: Response) {
     try {
-      const data = await targetService.create(req.body);
+      const userId = (req as any).user?.userId;
+      const data = await expenseService.create(userId, req.body);
       res.status(201).json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -32,7 +32,17 @@ export const targetController = {
 
   async update(req: Request, res: Response) {
     try {
-      const data = await targetService.update(req.params.id, req.body);
+      const data = await expenseService.update(req.params.id, req.body);
+      res.json({ success: true, data });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  async updateStatus(req: Request, res: Response) {
+    try {
+      const { status, reason } = req.body;
+      const data = await expenseService.updateStatus(req.params.id, status, reason);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -41,8 +51,8 @@ export const targetController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await targetService.delete(req.params.id);
-      res.json({ success: true, message: 'Target deleted successfully' });
+      await expenseService.delete(req.params.id);
+      res.json({ success: true, message: 'Expense deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }

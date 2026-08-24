@@ -23,7 +23,7 @@ const generateAccessToken = (userId: string, role: string, email: string) =>
   jwt.sign({ userId, role, email }, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions);
 
 const generateRefreshToken = (userId: string) =>
-  jwt.sign({ userId }, env.REFRESH_TOKEN_SECRET, { expiresIn: env.REFRESH_TOKEN_EXPIRES_IN } as jwt.SignOptions);
+  jwt.sign({ userId, jti: uuidv4() }, env.REFRESH_TOKEN_SECRET, { expiresIn: env.REFRESH_TOKEN_EXPIRES_IN } as jwt.SignOptions);
 
 export const authService = {
   async login(input: LoginInput) {

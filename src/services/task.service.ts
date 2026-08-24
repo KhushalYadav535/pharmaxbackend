@@ -1,72 +1,119 @@
 import prisma from '../config/database';
-import { TaskStatus } from '@prisma/client';
 
 export const taskService = {
-  async list(filters: any, userId: string) {
-    const { page = 1, limit = 20, status, type, priority, assignedToId } = filters;
+  async list(filters: any) {
+    const { page = 1, limit = 20, assignedToId, status, priority, type } = filters;
     const p = Number(page), l = Number(limit);
+    
     const where: any = {};
-    if (status) where.status = status;
-    if (type) where.type = type;
-    if (priority) where.priority = priority;
     if (assignedToId) where.assignedToId = assignedToId;
-    // Default: show tasks created by or assigned to this user
-    if (!assignedToId) {
-      where.OR = [{ assignedToId: userId }, { createdById: userId }];
-    }
+    if (status) where.status = status;
+    if (priority) where.priority = priority;
+    if (type) where.type = type;
+
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
         where,
         include: {
           assignedTo: { select: { id: true, firstName: true, lastName: true } },
-          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          createdBy: { select: { id: true, firstName: true, lastName: true } }
         },
         skip: (p - 1) * l,
         take: l,
-        orderBy: { dueDate: 'asc' },
+        orderBy: { dueDate: 'asc' } // Closest due dates first
       }),
-      prisma.task.count({ where }),
+      prisma.task.count({ where })
     ]);
-    return { tasks, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
+
+    return { tasks, total, page: p, totalPages: Math.ceil(total / l) };
   },
 
   async getById(id: string) {
-    return prisma.task.findUnique({
+    const task = await prisma.task.findUnique({
       where: { id },
-      include: { assignedTo: true, createdBy: true },
+      include: {
+        assignedTo: { select: { id: true, firstName: true, lastName: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true } }
+      }
     });
+    if (!task) throw new Error('Task not found');
+    return task;
   },
 
-  async create(data: {
-    title: string;
-    type?: any;
-    priority?: any;
-    assignedToId?: string;
-    queue?: string;
-    dueDate?: string;
-    reminder?: string;
-    notes?: string;
-  }, createdById: string) {
+  async create(reqUserId: string, data: any) {
+    const { 
+      title, type, priority, assignedToId,
+      dueDate, notes 
+    } = data;
+    
+    if (!title) {
+      throw new Error('Task title is required');
+    }
+
     return prisma.task.create({
       data: {
-        ...data,
-        createdById,
-        dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
-      },
+        title,
+        type: type || 'TODO',
+        priority: priority || 'MEDIUM',
+        createdById: reqUserId,
+        assignedToId: assignedToId || reqUserId, // Self-assign if empty
+        dueDate: dueDate ? new Date(dueDate) : null,
+        notes,
+        status: 'NOT_STARTED',
+        ownerAssignedDate: new Date()
+      }
     });
   },
 
   async update(id: string, data: any) {
-    if (data.status === 'COMPLETED' && !data.completionDate) {
-      data.completionDate = new Date();
-    }
-    return prisma.task.update({ where: { id }, data });
-  },
+    await this.getById(id);
+    
+    const { 
+      title, type, priority, assignedToId,
+      dueDate, notes, status 
+    } = data;
 
-  async complete(id: string) {
+    let completionDate = undefined;
+    if (status === 'COMPLETED') {
+      completionDate = new Date();
+    } else if (status) {
+      completionDate = null;
+    }
+
     return prisma.task.update({
       where: { id },
-      data: { status: TaskStatus.COMPLETED, completionDate: new Date() },
+      data: {
+        title,
+        type,
+        priority,
+        assignedToId,
+        dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : undefined,
+        notes,
+        status,
+        completionDate
+      }
     });
   },
+
+  async updateStatus(id: string, status: any) {
+    const validStatuses = ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+    
+    await this.getById(id);
+    
+    return prisma.task.update({
+      where: { id },
+      data: { 
+        status,
+        completionDate: status === 'COMPLETED' ? new Date() : null
+      }
+    });
+  },
+
+  async delete(id: string) {
+    await this.getById(id);
+    return prisma.task.delete({ where: { id } });
+  }
 };

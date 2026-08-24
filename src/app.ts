@@ -38,8 +38,13 @@ import targetRoutes from './routes/targets.routes';
 import dailyReportRoutes from './routes/dailyreports.routes';
 import interiorRoutes from './routes/interiors.routes';
 import productRoutes from './routes/products.routes';
+import targetRoutes from './routes/targets.routes';
+import tourPlanRoutes from './routes/tourplans.routes';
 import employeeRoutes from './routes/employees.routes';
 import headquarterRoutes from './routes/headquarters.routes';
+import stockReportRoutes from './routes/stockreports.routes';
+import expenseRoutes from './routes/expenses.routes';
+import orderRoutes from './routes/orders.routes';
 
 const app = express();
 
@@ -98,7 +103,11 @@ app.use(`${API}/stock-reports`, stockReportRoutes);
 app.use(`${API}/tasks`, taskRoutes);
 app.use(`${API}/surveys`, surveyRoutes);
 app.use(`${API}/targets`, targetRoutes);
+app.use(`${API}/tour-plans`, tourPlanRoutes);
 app.use(`${API}/daily-reports`, dailyReportRoutes);
+app.use(`${API}/stock-reports`, stockReportRoutes);
+app.use(`${API}/expenses`, expenseRoutes);
+app.use(`${API}/orders`, orderRoutes);
 app.use(`${API}/interiors`, interiorRoutes);
 app.use(`${API}/employees`, employeeRoutes);
 app.use(`${API}/headquarters`, headquarterRoutes);

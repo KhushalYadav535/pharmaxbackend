@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import { targetService } from '../services/target.service';
+import { orderService } from '../services/order.service';
 
-export const targetController = {
+export const orderController = {
   async list(req: Request, res: Response) {
     try {
-      const data = await targetService.list(req.query);
+      const data = await orderService.list(req.query);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
@@ -13,26 +13,27 @@ export const targetController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await targetService.getById(req.params.id);
-      if (!data) return res.status(404).json({ success: false, message: 'Target not found' });
+      const data = await orderService.getById(req.params.id);
       res.json({ success: true, data });
     } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+      res.status(404).json({ success: false, message: err.message });
     }
   },
 
   async create(req: Request, res: Response) {
     try {
-      const data = await targetService.create(req.body);
+      const userId = (req as any).user?.userId;
+      const data = await orderService.create(userId, req.body);
       res.status(201).json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
     }
   },
 
-  async update(req: Request, res: Response) {
+  async updateStatus(req: Request, res: Response) {
     try {
-      const data = await targetService.update(req.params.id, req.body);
+      const { status } = req.body;
+      const data = await orderService.updateStatus(req.params.id, status);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -41,8 +42,8 @@ export const targetController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await targetService.delete(req.params.id);
-      res.json({ success: true, message: 'Target deleted successfully' });
+      await orderService.delete(req.params.id);
+      res.json({ success: true, message: 'Order deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
