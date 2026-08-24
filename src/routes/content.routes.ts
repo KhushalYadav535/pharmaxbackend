@@ -48,7 +48,9 @@ router.get('/:id', async (req, res) => {
 // Create content (manager/admin)
 router.post('/', requireManager, async (req, res) => {
   try {
-    const content = await prisma.content.create({ data: req.body });
+    const data = { ...req.body };
+    if (!data.campaignId) delete data.campaignId;
+    const content = await prisma.content.create({ data });
     res.status(201).json({ success: true, data: content });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
