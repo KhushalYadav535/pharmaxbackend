@@ -10,7 +10,7 @@ export const cfaController = {
   },
   async getById(req: Request, res: Response) {
     try {
-      const item = await cfaService.getById(req.params.id as string);
+      const item = await cfaService.getById(req.params.id as string as string);
       if (!item) return res.status(404).json({ success: false, message: 'CFA not found' });
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
@@ -38,13 +38,13 @@ export const cfaController = {
           create: productIds.map((id: string) => ({ productId: id }))
         };
       }
-      const item = await cfaService.update(req.params.id as string, data);
+      const item = await cfaService.update(req.params.id as string as string, data);
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async deactivate(req: Request, res: Response) {
     try {
-      await cfaService.deactivate(req.params.id as string);
+      await cfaService.deactivate(req.params.id as string as string);
       res.json({ success: true, message: 'CFA deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },

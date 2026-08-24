@@ -13,7 +13,7 @@ export const tourPlanController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await tourPlanService.getById(req.params.id);
+      const data = await tourPlanService.getById(req.params.id as string);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(404).json({ success: false, message: err.message });
@@ -33,7 +33,7 @@ export const tourPlanController = {
 
   async update(req: Request, res: Response) {
     try {
-      const data = await tourPlanService.update(req.params.id, req.body);
+      const data = await tourPlanService.update(req.params.id as string, req.body);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -42,7 +42,7 @@ export const tourPlanController = {
 
   async updateStatus(req: Request, res: Response) {
     try {
-      const data = await tourPlanService.updateStatus(req.params.id, req.body.status);
+      const data = await tourPlanService.updateStatus(req.params.id as string, req.body.status);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -51,7 +51,7 @@ export const tourPlanController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await tourPlanService.delete(req.params.id);
+      await tourPlanService.delete(req.params.id as string);
       res.json({ success: true, message: 'Tour Plan deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

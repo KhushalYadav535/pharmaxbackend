@@ -10,7 +10,7 @@ export const areaController = {
   },
   async getById(req: Request, res: Response) {
     try {
-      const item = await areaService.getById(req.params.id as string);
+      const item = await areaService.getById(req.params.id as string as string);
       if (!item) return res.status(404).json({ success: false, message: 'Area not found' });
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
@@ -23,19 +23,19 @@ export const areaController = {
   },
   async update(req: Request, res: Response) {
     try {
-      const item = await areaService.update(req.params.id as string, req.body);
+      const item = await areaService.update(req.params.id as string as string, req.body);
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async deactivate(req: Request, res: Response) {
     try {
-      await areaService.deactivate(req.params.id as string);
+      await areaService.deactivate(req.params.id as string as string);
       res.json({ success: true, message: 'Area deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async reactivate(req: Request, res: Response) {
     try {
-      await areaService.reactivate(req.params.id as string);
+      await areaService.reactivate(req.params.id as string as string);
       res.json({ success: true, message: 'Area reactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },

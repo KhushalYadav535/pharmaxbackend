@@ -26,7 +26,7 @@ export const doctorController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const doctor = await doctorService.getById(req.params.id as string);
+      const doctor = await doctorService.getById(req.params.id as string as string);
       if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found' });
       res.json({ success: true, data: doctor });
     } catch (err: any) {
@@ -74,7 +74,7 @@ export const doctorController = {
         };
       }
 
-      const doctor = await doctorService.update(req.params.id as string, data);
+      const doctor = await doctorService.update(req.params.id as string as string, data);
       res.json({ success: true, data: doctor, message: 'Doctor updated successfully' });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -83,7 +83,7 @@ export const doctorController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await doctorService.softDelete(req.params.id as string);
+      await doctorService.softDelete(req.params.id as string as string);
       res.json({ success: true, message: 'Doctor deleted successfully' });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });

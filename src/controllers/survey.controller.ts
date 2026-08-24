@@ -13,7 +13,7 @@ export const surveyController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await surveyService.getById(req.params.id);
+      const data = await surveyService.getById(req.params.id as string);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(404).json({ success: false, message: err.message });
@@ -31,7 +31,7 @@ export const surveyController = {
 
   async update(req: Request, res: Response) {
     try {
-      const data = await surveyService.update(req.params.id, req.body);
+      const data = await surveyService.update(req.params.id as string, req.body);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -40,7 +40,7 @@ export const surveyController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await surveyService.delete(req.params.id);
+      await surveyService.delete(req.params.id as string);
       res.json({ success: true, message: 'Survey deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

@@ -10,7 +10,7 @@ export const stockistController = {
   },
   async getById(req: Request, res: Response) {
     try {
-      const item = await stockistService.getById(req.params.id as string);
+      const item = await stockistService.getById(req.params.id as string as string);
       if (!item) return res.status(404).json({ success: false, message: 'Stockist not found' });
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
@@ -38,13 +38,13 @@ export const stockistController = {
           create: productIds.map((id: string) => ({ productId: id }))
         };
       }
-      const item = await stockistService.update(req.params.id as string, data);
+      const item = await stockistService.update(req.params.id as string as string, data);
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async deactivate(req: Request, res: Response) {
     try {
-      await stockistService.deactivate(req.params.id as string);
+      await stockistService.deactivate(req.params.id as string as string);
       res.json({ success: true, message: 'Stockist deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },

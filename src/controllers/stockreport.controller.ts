@@ -13,7 +13,7 @@ export const stockReportController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await stockReportService.getById(req.params.id);
+      const data = await stockReportService.getById(req.params.id as string);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(404).json({ success: false, message: err.message });
@@ -31,7 +31,7 @@ export const stockReportController = {
 
   async update(req: Request, res: Response) {
     try {
-      const data = await stockReportService.update(req.params.id, req.body);
+      const data = await stockReportService.update(req.params.id as string, req.body);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -40,7 +40,7 @@ export const stockReportController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await stockReportService.delete(req.params.id);
+      await stockReportService.delete(req.params.id as string);
       res.json({ success: true, message: 'Stock Report deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

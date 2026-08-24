@@ -13,7 +13,7 @@ export const taskController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await taskService.getById(req.params.id);
+      const data = await taskService.getById(req.params.id as string);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(404).json({ success: false, message: err.message });
@@ -32,7 +32,7 @@ export const taskController = {
 
   async update(req: Request, res: Response) {
     try {
-      const data = await taskService.update(req.params.id, req.body);
+      const data = await taskService.update(req.params.id as string, req.body);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -42,7 +42,7 @@ export const taskController = {
   async updateStatus(req: Request, res: Response) {
     try {
       const { status } = req.body;
-      const data = await taskService.updateStatus(req.params.id, status);
+      const data = await taskService.updateStatus(req.params.id as string, status);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -51,7 +51,7 @@ export const taskController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await taskService.delete(req.params.id);
+      await taskService.delete(req.params.id as string);
       res.json({ success: true, message: 'Task deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

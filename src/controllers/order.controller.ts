@@ -13,7 +13,7 @@ export const orderController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const data = await orderService.getById(req.params.id);
+      const data = await orderService.getById(req.params.id as string);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(404).json({ success: false, message: err.message });
@@ -33,7 +33,7 @@ export const orderController = {
   async updateStatus(req: Request, res: Response) {
     try {
       const { status } = req.body;
-      const data = await orderService.updateStatus(req.params.id, status);
+      const data = await orderService.updateStatus(req.params.id as string, status);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -42,7 +42,7 @@ export const orderController = {
 
   async delete(req: Request, res: Response) {
     try {
-      await orderService.delete(req.params.id);
+      await orderService.delete(req.params.id as string);
       res.json({ success: true, message: 'Order deleted successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

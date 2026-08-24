@@ -13,7 +13,7 @@ export const visitController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const visit = await visitService.getById(req.params.id as string);
+      const visit = await visitService.getById(req.params.id as string as string);
       if (!visit) return res.status(404).json({ success: false, message: 'Visit not found' });
       res.json({ success: true, data: visit });
     } catch (err: any) {
@@ -32,7 +32,7 @@ export const visitController = {
 
   async checkIn(req: Request, res: Response) {
     try {
-      const visit = await visitService.checkIn(req.params.id as string, req.body);
+      const visit = await visitService.checkIn(req.params.id as string as string, req.body);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -41,7 +41,7 @@ export const visitController = {
 
   async checkOut(req: Request, res: Response) {
     try {
-      const visit = await visitService.checkOut(req.params.id as string, req.body);
+      const visit = await visitService.checkOut(req.params.id as string as string, req.body);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -50,7 +50,7 @@ export const visitController = {
 
   async approve(req: Request, res: Response) {
     try {
-      const visit = await visitService.approve(req.params.id as string, req.user!.userId);
+      const visit = await visitService.approve(req.params.id as string as string, req.user!.userId);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -61,7 +61,7 @@ export const visitController = {
     try {
       const { reason } = req.body;
       if (!reason) return res.status(400).json({ success: false, message: 'Rejection reason required' });
-      const visit = await visitService.reject(req.params.id as string, req.user!.userId, reason);
+      const visit = await visitService.reject(req.params.id as string as string, req.user!.userId, reason);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });

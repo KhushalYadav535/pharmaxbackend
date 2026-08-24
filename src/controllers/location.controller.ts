@@ -10,7 +10,7 @@ export const locationController = {
   },
   async getById(req: Request, res: Response) {
     try {
-      const item = await locationService.getById(req.params.id as string);
+      const item = await locationService.getById(req.params.id as string as string);
       if (!item) return res.status(404).json({ success: false, message: 'Location not found' });
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
@@ -23,25 +23,25 @@ export const locationController = {
   },
   async update(req: Request, res: Response) {
     try {
-      const item = await locationService.update(req.params.id as string, req.body);
+      const item = await locationService.update(req.params.id as string as string, req.body);
       res.json({ success: true, data: item });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async deactivate(req: Request, res: Response) {
     try {
-      await locationService.deactivate(req.params.id as string);
+      await locationService.deactivate(req.params.id as string as string);
       res.json({ success: true, message: 'Location deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async reactivate(req: Request, res: Response) {
     try {
-      await locationService.reactivate(req.params.id as string);
+      await locationService.reactivate(req.params.id as string as string);
       res.json({ success: true, message: 'Location reactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
   async deleteById(req: Request, res: Response) {
     try {
-      await locationService.deleteById(req.params.id as string);
+      await locationService.deleteById(req.params.id as string as string);
       res.json({ success: true, message: 'Location deleted' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },

@@ -83,7 +83,7 @@ export const orderService = {
         totalAmount: Number(totalAmount || 0),
         discount: Number(discount || 0),
         notes,
-        status: 'PENDING',
+        status: 'PENDING' as any,
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,
