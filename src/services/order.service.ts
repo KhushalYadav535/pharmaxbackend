@@ -79,11 +79,11 @@ export const orderService = {
         retailerId,
         distributorId,
         orderDate: orderDate ? new Date(orderDate) : new Date(),
-        expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : null,
-        totalAmount: Number(totalAmount || 0),
-        discount: Number(discount || 0),
-        notes,
-        status: 'PENDING' as any,
+        expectedDeliveryDate: data.expectedDeliveryDate ? new Date(data.expectedDeliveryDate) : null,
+        totalAmount: data.totalAmount,
+        discount: data.discount || 0,
+        notes: data.notes || '',
+        status: 'SUBMITTED',
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,
@@ -100,7 +100,7 @@ export const orderService = {
   },
 
   async updateStatus(id: string, status: any) {
-    const validStatuses = ['DRAFT', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+    const validStatuses = ['DRAFT', 'SUBMITTED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'CANCELLED'];
     if (!validStatuses.includes(status)) {
       throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }

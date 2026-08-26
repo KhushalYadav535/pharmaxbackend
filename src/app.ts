@@ -40,13 +40,14 @@ import employeeRoutes from './routes/employees.routes';
 import headquarterRoutes from './routes/headquarters.routes';
 import dailyReportRoutes from './routes/dailyreports.routes';
 import interiorRoutes from './routes/interiors.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 
 const app = express();
 
 // ─── Security & Parsing ───────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: true, // true reflects the origin (allows all for dev with credentials)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -102,6 +103,7 @@ app.use(`${API}/employees`, employeeRoutes);
 app.use(`${API}/headquarters`, headquarterRoutes);
 app.use(`${API}/daily-reports`, dailyReportRoutes);
 app.use(`${API}/interiors`, interiorRoutes);
+app.use(`${API}/dashboard`, dashboardRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);
