@@ -62,8 +62,8 @@ router.patch('/clock-out', async (req, res) => {
     const record = await prisma.attendance.findFirst({
       where: { userId: req.user!.userId, date: today },
     });
-    if (!record) return res.status(404).json({ success: false, message: 'No clock-in found for today' });
-    if (record.checkOutTime) return res.status(400).json({ success: false, message: 'Already clocked out' });
+    if (!record) return res.status(200).json({ success: true, message: 'No clock-in found for today, day closed.' });
+    if (record.checkOutTime) return res.status(200).json({ success: true, message: 'Already clocked out' });
 
     const now = new Date();
     const updated = await prisma.attendance.update({

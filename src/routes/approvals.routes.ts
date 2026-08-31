@@ -6,17 +6,35 @@ import prisma from '../config/database';
 const router = Router();
 router.use(authenticate);
 
+// Helper function to get the user ID filter for managers vs admins
+async function getManagerFilter(req: any) {
+  const currentUser = req.user!;
+  const isAdmin = ['SUPER_ADMIN', 'SALES_ADMIN', 'NSM', 'ZM'].includes(currentUser.role);
+  
+  if (isAdmin) {
+    return {}; // No filter, admins see everything
+  }
+
+  const teamIds = await prisma.user.findMany({
+    where: { managerId: currentUser.userId, isActive: true },
+    select: { id: true },
+  });
+  const userIds = teamIds.map((u) => u.id);
+
+  if (userIds.length === 0) {
+    return { userId: { in: ['___NO_TEAM___'] } }; // Hack to return empty results safely
+  }
+
+  return { userId: { in: userIds } };
+}
+
 // ── Pending Visits ────────────────────────────────────────────────────────────
 router.get('/pending-visits', requireManager, async (req, res) => {
   try {
-    const teamIds = await prisma.user.findMany({
-      where: { managerId: req.user!.userId, isActive: true },
-      select: { id: true },
-    });
-    const userIds = teamIds.map((u) => u.id);
-
+    const userFilter = await getManagerFilter(req);
+    
     const pending = await prisma.visit.findMany({
-      where: { userId: { in: userIds }, status: 'COMPLETED', approvalStatus: 'PENDING' },
+      where: { ...userFilter, status: 'COMPLETED', approvalStatus: 'PENDING' },
       orderBy: { checkInTime: 'desc' },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, role: true } },
@@ -32,14 +50,10 @@ router.get('/pending-visits', requireManager, async (req, res) => {
 // ── Pending Expenses ──────────────────────────────────────────────────────────
 router.get('/pending-expenses', requireManager, async (req, res) => {
   try {
-    const teamIds = await prisma.user.findMany({
-      where: { managerId: req.user!.userId, isActive: true },
-      select: { id: true },
-    });
-    const userIds = teamIds.map((u) => u.id);
+    const userFilter = await getManagerFilter(req);
 
     const pending = await prisma.expense.findMany({
-      where: { userId: { in: userIds }, approvalStatus: 'PENDING' },
+      where: { ...userFilter, approvalStatus: 'PENDING' },
       orderBy: { expenseDate: 'desc' },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
@@ -50,32 +64,63 @@ router.get('/pending-expenses', requireManager, async (req, res) => {
 // ── Pending Tour Plans ────────────────────────────────────────────────────────
 router.get('/pending-tourplans', requireManager, async (req, res) => {
   try {
-    const teamIds = await prisma.user.findMany({
-      where: { managerId: req.user!.userId, isActive: true },
-      select: { id: true },
-    });
-    const userIds = teamIds.map((u) => u.id);
+    const userFilter = await getManagerFilter(req);
 
     const pending = await prisma.tourPlan.findMany({
-      where: { userId: { in: userIds }, approvalStatus: 'PENDING' },
+      where: { 
+        ...userFilter, 
+        approvalStatus: 'PENDING',
+        planDate: { not: null }  // Only explicitly submitted plans
+      },
       orderBy: { planDate: 'asc' },
-      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, employeeId: true, role: true } },
+        hq: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true } },
+        _count: { select: { days: true } }
+      },
     });
-    res.json({ success: true, data: pending });
+
+    // Add visit count to each plan
+    const plansWithStats = await Promise.all(pending.map(async (plan) => {
+      const visitCount = await prisma.visit.count({
+        where: { tourPlanDay: { tourPlanId: plan.id } }
+      });
+      return { ...plan, visitCount };
+    }));
+
+    res.json({ success: true, data: plansWithStats });
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ── Approve / Reject Tour Plan ──────────────────────────────────────────
+router.patch('/tourplans/:id/approve', requireManager, async (req, res) => {
+  try {
+    const updated = await prisma.tourPlan.update({
+      where: { id: req.params.id as string },
+      data: { approvalStatus: 'APPROVED' }
+    });
+    res.json({ success: true, data: updated });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+router.patch('/tourplans/:id/reject', requireManager, async (req, res) => {
+  try {
+    const updated = await prisma.tourPlan.update({
+      where: { id: req.params.id as string },
+      data: { approvalStatus: 'REJECTED' }
+    });
+    res.json({ success: true, data: updated });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
 
 // ── Pending Leaves ────────────────────────────────────────────────────────────
 router.get('/pending-leaves', requireManager, async (req, res) => {
   try {
-    const teamIds = await prisma.user.findMany({
-      where: { managerId: req.user!.userId, isActive: true },
-      select: { id: true },
-    });
-    const userIds = teamIds.map((u) => u.id);
+    const userFilter = await getManagerFilter(req);
 
     const pending = await prisma.leave.findMany({
-      where: { userId: { in: userIds }, approvalStatus: 'PENDING' },
+      where: { ...userFilter, approvalStatus: 'PENDING' },
       orderBy: { startDate: 'asc' },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
@@ -86,17 +131,13 @@ router.get('/pending-leaves', requireManager, async (req, res) => {
 // ── Aggregated summary count ──────────────────────────────────────────────────
 router.get('/summary', requireManager, async (req, res) => {
   try {
-    const teamIds = await prisma.user.findMany({
-      where: { managerId: req.user!.userId, isActive: true },
-      select: { id: true },
-    });
-    const userIds = teamIds.map((u) => u.id);
+    const userFilter = await getManagerFilter(req);
 
     const [pendingVisits, pendingExpenses, pendingLeaves, pendingTourPlans] = await Promise.all([
-      prisma.visit.count({ where: { userId: { in: userIds }, status: 'COMPLETED', approvalStatus: 'PENDING' } }),
-      prisma.expense.count({ where: { userId: { in: userIds }, approvalStatus: 'PENDING' } }),
-      prisma.leave.count({ where: { userId: { in: userIds }, approvalStatus: 'PENDING' } }),
-      prisma.tourPlan.count({ where: { userId: { in: userIds }, approvalStatus: 'PENDING' } }),
+      prisma.visit.count({ where: { ...userFilter, status: 'COMPLETED', approvalStatus: 'PENDING' } }),
+      prisma.expense.count({ where: { ...userFilter, approvalStatus: 'PENDING' } }),
+      prisma.leave.count({ where: { ...userFilter, approvalStatus: 'PENDING' } }),
+      prisma.tourPlan.count({ where: { ...userFilter, approvalStatus: 'PENDING', planDate: { not: null } } }),
     ]);
 
     res.json({ success: true, data: { pendingVisits, pendingExpenses, pendingLeaves, pendingTourPlans, total: pendingVisits + pendingExpenses + pendingLeaves + pendingTourPlans } });
@@ -128,7 +169,8 @@ router.get('/pending-entities', async (req, res) => {
 
 router.post('/entities/:type/:id', async (req, res) => {
   try {
-    const { type, id } = req.params;
+    const { type } = req.params;
+    const id = req.params.id as string;
     const { status } = req.body;
     if (!['APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ success: false, message: 'Invalid status' });
 

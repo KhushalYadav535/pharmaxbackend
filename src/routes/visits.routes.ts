@@ -9,10 +9,13 @@ router.use(authenticate);
 
 router.get('/', visitController.list);
 router.get('/today-stats', visitController.todayStats);
+router.get('/team', requireManager, visitController.listTeam);
+router.get('/team/members', requireManager, visitController.getTeamMembers);
 router.get('/:id', visitController.getById);
 router.post('/', auditLog('CREATE', 'Visit'), visitController.create);
 router.patch('/:id/check-in', visitController.checkIn);
 router.patch('/:id/check-out', visitController.checkOut);
+router.patch('/:id/notes', visitController.updateNotes);
 router.patch('/:id/approve', requireManager, visitController.approve);
 router.patch('/:id/reject', requireManager, visitController.reject);
 

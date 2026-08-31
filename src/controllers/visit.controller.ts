@@ -11,6 +11,24 @@ export const visitController = {
     }
   },
 
+  async listTeam(req: Request, res: Response) {
+    try {
+      const result = await visitService.listTeam(req.query, req.user!.userId, req.user!.role);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      res.status(err.message === 'Access denied' ? 403 : 500).json({ success: false, message: err.message });
+    }
+  },
+
+  async getTeamMembers(req: Request, res: Response) {
+    try {
+      const members = await visitService.getTeamMembers(req.user!.userId, req.user!.role);
+      res.json({ success: true, data: members });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
   async getById(req: Request, res: Response) {
     try {
       const visit = await visitService.getById(req.params.id as string as string);
@@ -18,6 +36,16 @@ export const visitController = {
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  async updateNotes(req: Request, res: Response) {
+    try {
+      const { notes } = req.body;
+      const visit = await visitService.updateNotes(req.params.id as string, notes);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
     }
   },
 

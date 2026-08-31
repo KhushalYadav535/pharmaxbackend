@@ -6,6 +6,7 @@ export interface DoctorFilters {
   specialty?: string;
   classification?: DoctorClassification;
   territoryId?: string;
+  areaId?: string;
   hospitalId?: string;
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   page?: number;
@@ -15,7 +16,7 @@ export interface DoctorFilters {
 export const doctorService = {
   async list(filters: DoctorFilters, userId: string, userRole: string) {
     const {
-      search, specialty, classification, territoryId, hospitalId, approvalStatus,
+      search, specialty, classification, territoryId, areaId, hospitalId, approvalStatus,
       page = 1, limit = 20,
     } = filters;
 
@@ -33,6 +34,7 @@ export const doctorService = {
       ...(specialty && { specialty }),
       ...(classification && { classification }),
       ...(territoryId && { territoryId }),
+      ...(areaId && { areaId }),
       ...(hospitalId && { hospitalId }),
     };
 

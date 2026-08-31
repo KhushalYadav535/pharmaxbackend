@@ -213,5 +213,189 @@ router.get('/expense-summary', async (req, res) => {
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-export default router;
+// Day End Summary
+router.get('/day-end-summary', async (req, res) => {
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const where: any = {
+      plannedDate: { gte: today, lt: tomorrow },
+      ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
+    };
 
+    const visits = await prisma.visit.findMany({ 
+      where, 
+      include: { 
+        doctor: true, hospital: true, retailer: true, stockist: true, 
+        orders: true, sampleDistributions: true 
+      },
+      orderBy: { checkInTime: 'asc' } 
+    });
+
+    const planned = visits.length;
+    const completed = visits.filter(v => v.status === 'COMPLETED').length;
+    const missed = visits.filter(v => v.status === 'MISSED').length;
+    
+    // Performance
+    const totalDuration = visits.reduce((acc, v) => acc + (v.durationMinutes || 0), 0);
+    const totalTravel = 42; // We can mock distance for now, or estimate from lat/lng if we want.
+
+    // Call Breakdown
+    const doctors = visits.filter(v => v.visitType === 'DOCTOR' && v.status === 'COMPLETED').length;
+    const hospitals = visits.filter(v => v.visitType === 'HOSPITAL' && v.status === 'COMPLETED').length;
+    const retailers = visits.filter(v => v.visitType === 'RETAILER' && v.status === 'COMPLETED').length;
+    const stockists = visits.filter(v => v.visitType === 'STOCKIST' && v.status === 'COMPLETED').length;
+
+    // Business
+    let productsDetailed = 0;
+    let ordersBooked = 0;
+    let samplesDistributed = 0;
+    let newOpportunities = 0;
+
+    visits.filter(v => v.status === 'COMPLETED').forEach(v => {
+      productsDetailed += v.productsDiscussed?.length || 0;
+      newOpportunities += v.businessSignal?.length || 0;
+      v.orders.forEach(o => ordersBooked += (o.totalAmount || 0));
+      v.sampleDistributions.forEach(s => samplesDistributed += (s.quantity || 0));
+    });
+
+    // Engagement
+    const positive = visits.filter(v => v.engagement === 'High' || v.engagement === 'Positive').length;
+    const neutral = visits.filter(v => v.engagement === 'Medium' || v.engagement === 'Neutral').length;
+    const negative = visits.filter(v => v.engagement === 'Low' || v.engagement === 'Negative').length;
+
+    // Timeline
+    const timeline = visits.map(v => {
+      let targetName = 'Unknown';
+      let targetSub = '';
+      if (v.visitType === 'DOCTOR' && v.doctor) { targetName = `Dr. ${v.doctor.firstName} ${v.doctor.lastName}`; targetSub = v.doctor.specialty || ''; }
+      else if (v.visitType === 'HOSPITAL' && v.hospital) targetName = v.hospital.name;
+      else if (v.visitType === 'RETAILER' && v.retailer) targetName = v.retailer.name;
+      else if (v.visitType === 'STOCKIST' && v.stockist) targetName = v.stockist.name;
+
+      return {
+        id: v.id,
+        time: v.checkInTime ? v.checkInTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (v.plannedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Pending'),
+        targetName,
+        targetSub,
+        type: v.visitType,
+        status: v.status,
+        engagement: v.engagement,
+        duration: v.durationMinutes
+      };
+    });
+
+    // Pending & Attention
+    const sevenDaysFromNow = new Date(today);
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    
+    const followUpsDue = await prisma.visit.count({
+      where: {
+        ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
+        nextFollowUpDate: { gte: today, lt: sevenDaysFromNow }
+      }
+    });
+
+    const pendingOrders = await prisma.order.findMany({
+      where: {
+        ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
+        status: 'DRAFT'
+      }
+    });
+    const ordersPendingCount = pendingOrders.length;
+    const ordersPendingAmount = pendingOrders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
+
+    const expensesUnsubmitted = await prisma.expense.count({
+      where: {
+        ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
+        approvalStatus: 'PENDING',
+        createdAt: { gte: today, lt: tomorrow }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        performance: { planned, completed, missed, totalDuration, totalTravel },
+        callBreakdown: { doctors, hospitals, retailers, stockists },
+        business: { productsDetailed, ordersBooked, samplesDistributed, newOpportunities },
+        engagement: { positive, neutral, negative },
+        timeline,
+        pendingAttention: {
+          followUpsDue,
+          ordersPendingCount,
+          ordersPendingAmount,
+          expensesUnsubmitted
+        }
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Day End Summary (for MR closing day)
+router.get('/day-end-summary', async (req, res) => {
+  try {
+    const userId = req.user!.userId;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    // Fetch today's visits for the user
+    const visits = await prisma.visit.findMany({
+      where: {
+        userId,
+        plannedDate: { gte: today, lt: tomorrow }
+      },
+      include: {
+        doctor: { select: { specialty: true } },
+      }
+    });
+
+    const performance = {
+      planned: visits.length,
+      completed: visits.filter(v => v.status === 'COMPLETED').length,
+      missed: visits.filter(v => v.status === 'MISSED' || v.status === 'CANCELLED').length,
+      totalDuration: 0, // Mocked for now, usually requires checkIn and checkOut differences
+      totalTravel: 42 // Mocked travel km for now
+    };
+
+    const callBreakdown = {
+      doctors: visits.filter(v => v.visitType === 'DOCTOR' && v.status === 'COMPLETED').length,
+      hospitals: visits.filter(v => v.visitType === 'HOSPITAL' && v.status === 'COMPLETED').length,
+      retailers: visits.filter(v => v.visitType === 'RETAILER' && v.status === 'COMPLETED').length,
+      stockists: visits.filter(v => v.visitType === 'STOCKIST' && v.status === 'COMPLETED').length,
+    };
+
+    const business = {
+      productsDetailed: visits.reduce((acc, v) => acc + (v.visitObjective?.length || 0), 0),
+      ordersBooked: 0, // Could fetch from Order table
+      samplesDistributed: 0, // Could fetch from SampleDistribution
+      newOpportunities: 0
+    };
+
+    const engagement = {
+      positive: visits.filter(v => v.visitFeedback?.toLowerCase().includes('good') || v.visitFeedback?.toLowerCase().includes('positive')).length,
+      neutral: visits.filter(v => !v.visitFeedback || v.visitFeedback?.toLowerCase().includes('neutral')).length,
+      negative: visits.filter(v => v.visitFeedback?.toLowerCase().includes('bad') || v.visitFeedback?.toLowerCase().includes('poor')).length,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        performance,
+        callBreakdown,
+        business,
+        engagement,
+        timeline: []
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+export default router;

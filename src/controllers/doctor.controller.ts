@@ -11,6 +11,7 @@ export const doctorController = {
           specialty: req.query.specialty as string,
           classification: req.query.classification as any,
           territoryId: req.query.territoryId as string,
+          areaId: req.query.areaId as string,
           hospitalId: req.query.hospitalId as string,
           page: req.query.page ? parseInt(req.query.page as string) : 1,
           limit: req.query.limit ? parseInt(req.query.limit as string) : 20,

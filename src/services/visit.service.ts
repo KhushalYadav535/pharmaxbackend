@@ -1,6 +1,20 @@
 import prisma from '../config/database';
 import { Prisma, VisitStatus, VisitType, ApprovalStatus } from '@prisma/client';
 
+// Recursively get all subordinate user IDs (direct + indirect reportees)
+async function getHierarchyIds(managerId: string): Promise<string[]> {
+  const directReports = await prisma.user.findMany({
+    where: { managerId, isActive: true },
+    select: { id: true },
+  });
+  const ids: string[] = directReports.map((r) => r.id);
+  for (const r of directReports) {
+    const sub = await getHierarchyIds(r.id);
+    ids.push(...sub);
+  }
+  return ids;
+}
+
 export interface CreateVisitInput {
   visitType: VisitType;
   plannedDate: string;
@@ -65,12 +79,79 @@ export const visitService = {
     return { visits, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
+  async listTeam(filters: any, userId: string, userRole: string) {
+    let { page = 1, limit = 30, status, visitType, fromDate, toDate, mrId } = filters;
+    page = Number(page) || 1;
+    limit = Number(limit) || 30;
+
+    const where: Prisma.VisitWhereInput = {
+      ...(status && { status }),
+      ...(visitType && { visitType }),
+      ...(mrId && { userId: mrId }),
+      ...(fromDate || toDate
+        ? { plannedDate: { gte: fromDate ? new Date(fromDate) : undefined, lte: toDate ? new Date(toDate) : undefined } }
+        : {}),
+    };
+
+    // Build hierarchy-based userId filter (unless mrId already set)
+    if (!mrId) {
+      if (['SUPER_ADMIN', 'SALES_ADMIN'].includes(userRole)) {
+        // See all visits — no userId filter
+      } else if (['NSM', 'ZM', 'RSM', 'ASM'].includes(userRole)) {
+        // Recursively fetch all reportees
+        const allReporteeIds = await getHierarchyIds(userId);
+        where.userId = { in: allReporteeIds };
+      } else {
+        // MR/TRADE_REP — not allowed to use this endpoint
+        throw new Error('Access denied');
+      }
+    }
+
+    const [visits, total] = await Promise.all([
+      prisma.visit.findMany({
+        where,
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, role: true, employeeId: true } },
+          doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+          retailer: { select: { id: true, name: true, city: true } },
+          distributor: { select: { id: true, name: true, city: true } },
+          hospital: { select: { id: true, name: true, city: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { plannedDate: 'desc' },
+      }),
+      prisma.visit.count({ where }),
+    ]);
+
+    return { visits, total, page, limit, totalPages: Math.ceil(total / limit) };
+  },
+
+  async getTeamMembers(userId: string, userRole: string) {
+    if (['SUPER_ADMIN', 'SALES_ADMIN'].includes(userRole)) {
+      return prisma.user.findMany({
+        where: { isActive: true, role: { in: ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP', 'ASM', 'RSM', 'ZM', 'NSM'] } },
+        select: { id: true, firstName: true, lastName: true, role: true, employeeId: true },
+        orderBy: { firstName: 'asc' },
+      });
+    }
+    const ids = await getHierarchyIds(userId);
+    return prisma.user.findMany({
+      where: { id: { in: ids }, isActive: true },
+      select: { id: true, firstName: true, lastName: true, role: true, employeeId: true },
+      orderBy: { firstName: 'asc' },
+    });
+  },
+
   async getById(id: string) {
-    return prisma.visit.findUnique({
+    const visit = await prisma.visit.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, role: true } },
-        doctor: true,
+        user: { select: { id: true, firstName: true, lastName: true, role: true, employeeId: true } },
+        doctor: {
+          include: { hospital: { select: { id: true, name: true, city: true } } },
+        },
         retailer: true,
         distributor: true,
         hospital: true,
@@ -79,6 +160,37 @@ export const visitService = {
         orders: { include: { items: { include: { product: true } } } },
         approvedBy: { select: { id: true, firstName: true, lastName: true } },
       },
+    });
+    if (!visit) throw new Error('Visit not found');
+
+    let lastVisit = null;
+    if (visit.doctorId || visit.hospitalId || visit.retailerId || visit.distributorId) {
+      lastVisit = await prisma.visit.findFirst({
+        where: {
+          status: 'COMPLETED',
+          plannedDate: { lt: visit.plannedDate },
+          ...(visit.doctorId && { doctorId: visit.doctorId }),
+          ...(visit.hospitalId && { hospitalId: visit.hospitalId }),
+          ...(visit.retailerId && { retailerId: visit.retailerId }),
+          ...(visit.distributorId && { distributorId: visit.distributorId }),
+        },
+        orderBy: { plannedDate: 'desc' },
+      });
+    }
+
+    return { ...visit, lastVisit };
+  },
+
+  async updateNotes(id: string, notes: string) {
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (!visit) throw new Error('Visit not found');
+    
+    // Append the new note to existing notes if there are any
+    const updatedNotes = visit.notes ? `${visit.notes}\n\n${notes}` : notes;
+    
+    return prisma.visit.update({
+      where: { id },
+      data: { notes: updatedNotes },
     });
   },
 
