@@ -72,17 +72,29 @@ router.get('/team-productivity', async (req, res) => {
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const productivity = await Promise.all(
+    const members = await Promise.all(
       teamMembers.map(async (member) => {
-        const [planned, completed] = await Promise.all([
+        const [planned, completed, ordersTotal] = await Promise.all([
           prisma.visit.count({ where: { userId: member.id, plannedDate: { gte: startOfMonth } } }),
           prisma.visit.count({ where: { userId: member.id, plannedDate: { gte: startOfMonth }, status: 'COMPLETED' } }),
+          prisma.order.aggregate({ where: { userId: member.id, createdAt: { gte: startOfMonth } }, _sum: { totalAmount: true } }),
         ]);
-        return { ...member, planned, completed, rate: planned > 0 ? Math.round((completed / planned) * 100) : 0 };
+        return {
+          ...member,
+          planned,
+          completed,
+          rate: planned > 0 ? Math.round((completed / planned) * 100) : 0,
+          revenue: ordersTotal._sum.totalAmount || 0,
+        };
       }),
     );
 
-    res.json({ success: true, data: productivity });
+    // Aggregate totals across the team
+    const totalVisits = members.reduce((s, m) => s + m.planned, 0);
+    const completedVisits = members.reduce((s, m) => s + m.completed, 0);
+    const totalRevenue = members.reduce((s, m) => s + m.revenue, 0);
+
+    res.json({ success: true, data: { members, totalVisits, completedVisits, totalRevenue } });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -239,7 +251,8 @@ router.get('/day-end-summary', async (req, res) => {
     
     // Performance
     const totalDuration = visits.reduce((acc, v) => acc + (v.durationMinutes || 0), 0);
-    const totalTravel = 42; // We can mock distance for now, or estimate from lat/lng if we want.
+    // Estimate travel: completed visits × 5km average
+    const totalTravel = completed * 5;
 
     // Call Breakdown
     const doctors = visits.filter(v => v.visitType === 'DOCTOR' && v.status === 'COMPLETED').length;
@@ -335,67 +348,6 @@ router.get('/day-end-summary', async (req, res) => {
   }
 });
 
-// Day End Summary (for MR closing day)
-router.get('/day-end-summary', async (req, res) => {
-  try {
-    const userId = req.user!.userId;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    // Fetch today's visits for the user
-    const visits = await prisma.visit.findMany({
-      where: {
-        userId,
-        plannedDate: { gte: today, lt: tomorrow }
-      },
-      include: {
-        doctor: { select: { specialty: true } },
-      }
-    });
-
-    const performance = {
-      planned: visits.length,
-      completed: visits.filter(v => v.status === 'COMPLETED').length,
-      missed: visits.filter(v => v.status === 'MISSED' || v.status === 'CANCELLED').length,
-      totalDuration: 0, // Mocked for now, usually requires checkIn and checkOut differences
-      totalTravel: 42 // Mocked travel km for now
-    };
-
-    const callBreakdown = {
-      doctors: visits.filter(v => v.visitType === 'DOCTOR' && v.status === 'COMPLETED').length,
-      hospitals: visits.filter(v => v.visitType === 'HOSPITAL' && v.status === 'COMPLETED').length,
-      retailers: visits.filter(v => v.visitType === 'RETAILER' && v.status === 'COMPLETED').length,
-      stockists: visits.filter(v => v.visitType === 'STOCKIST' && v.status === 'COMPLETED').length,
-    };
-
-    const business = {
-      productsDetailed: visits.reduce((acc, v) => acc + (v.visitObjective?.length || 0), 0),
-      ordersBooked: 0, // Could fetch from Order table
-      samplesDistributed: 0, // Could fetch from SampleDistribution
-      newOpportunities: 0
-    };
-
-    const engagement = {
-      positive: visits.filter(v => v.visitFeedback?.toLowerCase().includes('good') || v.visitFeedback?.toLowerCase().includes('positive')).length,
-      neutral: visits.filter(v => !v.visitFeedback || v.visitFeedback?.toLowerCase().includes('neutral')).length,
-      negative: visits.filter(v => v.visitFeedback?.toLowerCase().includes('bad') || v.visitFeedback?.toLowerCase().includes('poor')).length,
-    };
-
-    res.json({
-      success: true,
-      data: {
-        performance,
-        callBreakdown,
-        business,
-        engagement,
-        timeline: []
-      }
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+// Duplicate day-end-summary removed — see consolidated route above (line 217)
 
 export default router;

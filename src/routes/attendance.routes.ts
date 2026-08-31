@@ -40,15 +40,19 @@ router.post('/clock-in', async (req, res) => {
     });
     if (existing) return res.status(400).json({ success: false, message: 'Already clocked in today' });
 
+    const lat     = req.body.lat ?? req.body.latitude ?? null;
+    const lng     = req.body.lng ?? req.body.longitude ?? null;
+    const address = req.body.address ?? req.body.locationAddress ?? null;
+
     const record = await prisma.attendance.create({
       data: {
         userId: req.user!.userId,
         date: today,
         checkInTime: new Date(),
         status: 'PRESENT',
-        checkInLat: req.body.lat,
-        checkInLng: req.body.lng,
-        notes: req.body.address,
+        checkInLat: lat,
+        checkInLng: lng,
+        notes: address,
       },
     });
     res.status(201).json({ success: true, data: record });

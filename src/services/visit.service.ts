@@ -281,12 +281,30 @@ export const visitService = {
     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-    const [planned, completed, pending] = await Promise.all([
+    const [planned, completed, pending, visits] = await Promise.all([
       prisma.visit.count({ where: { userId, plannedDate: { gte: startOfDay, lte: endOfDay } } }),
       prisma.visit.count({ where: { userId, plannedDate: { gte: startOfDay, lte: endOfDay }, status: 'COMPLETED' } }),
       prisma.visit.count({ where: { userId, approvalStatus: 'PENDING', status: 'COMPLETED' } }),
+      prisma.visit.findMany({
+        where: { userId, plannedDate: { gte: startOfDay, lte: endOfDay } },
+        select: { visitType: true, status: true },
+      }),
     ]);
 
-    return { planned, completed, pending, missed: planned - completed };
+    // Visit type breakdown
+    const breakdown = {
+      doctors:   visits.filter((v) => v.visitType === 'DOCTOR').length,
+      hospitals: visits.filter((v) => v.visitType === 'HOSPITAL').length,
+      retailers: visits.filter((v) => v.visitType === 'RETAILER').length,
+      stockists: visits.filter((v) => v.visitType === 'STOCKIST' || v.visitType === 'DISTRIBUTOR').length,
+      others:    visits.filter((v) => !['DOCTOR','HOSPITAL','RETAILER','STOCKIST','DISTRIBUTOR'].includes(v.visitType)).length,
+    };
+
+    // Rough travel estimate: 5 km per visit, 45 min per visit
+    const estimatedTravelKm = planned * 5;
+    const estimatedDurationMins = planned * 45;
+
+    return { planned, completed, pending, missed: planned - completed, breakdown, estimatedTravelKm, estimatedDurationMins };
   },
 };
+
