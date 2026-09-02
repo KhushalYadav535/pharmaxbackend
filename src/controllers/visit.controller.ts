@@ -31,7 +31,7 @@ export const visitController = {
 
   async getById(req: Request, res: Response) {
     try {
-      const visit = await visitService.getById(req.params.id as string as string);
+      const visit = await visitService.getById((req.params.id as string));
       if (!visit) return res.status(404).json({ success: false, message: 'Visit not found' });
       res.json({ success: true, data: visit });
     } catch (err: any) {
@@ -42,7 +42,7 @@ export const visitController = {
   async updateNotes(req: Request, res: Response) {
     try {
       const { notes } = req.body;
-      const visit = await visitService.updateNotes(req.params.id as string, notes);
+      const visit = await visitService.updateNotes((req.params.id as string), notes);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -58,18 +58,92 @@ export const visitController = {
     }
   },
 
-  async checkIn(req: Request, res: Response) {
+  // §6 Navigate: PLANNED → NAVIGATING
+  async navigate(req: Request, res: Response) {
     try {
-      const visit = await visitService.checkIn(req.params.id as string as string, req.body);
+      const visit = await visitService.navigate((req.params.id as string), req.user!.userId);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
     }
   },
 
+  // §6 Check-in: PLANNED/NAVIGATING → CHECKED_IN (with all guards)
+  async checkIn(req: Request, res: Response) {
+    try {
+      const visit = await visitService.checkIn((req.params.id as string), req.user!.userId, req.body);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §9 Prepare: CHECKED_IN → PREPARING
+  async prepare(req: Request, res: Response) {
+    try {
+      const visit = await visitService.prepare((req.params.id as string), req.user!.userId);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §11 Engage: PREPARING → ENGAGING
+  async engage(req: Request, res: Response) {
+    try {
+      const visit = await visitService.engage((req.params.id as string), req.user!.userId, req.body);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §12 Detail: ENGAGING → DETAILING
+  async detail(req: Request, res: Response) {
+    try {
+      const visit = await visitService.detail((req.params.id as string), req.user!.userId);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §13 Check-out: active states → CHECKED_OUT
   async checkOut(req: Request, res: Response) {
     try {
-      const visit = await visitService.checkOut(req.params.id as string as string, req.body);
+      const visit = await visitService.checkOut((req.params.id as string), req.user!.userId, req.body);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §18 Submit Report: CHECKED_OUT/REPORT_PENDING → REPORTED
+  async submitReport(req: Request, res: Response) {
+    try {
+      const visit = await visitService.submitReport((req.params.id as string), req.user!.userId, req.body);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §2.2 Next Call: REPORTED → NEXT_CALL
+  async nextCall(req: Request, res: Response) {
+    try {
+      const visit = await visitService.nextCall((req.params.id as string), req.user!.userId);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // §23 Mark Missed: PLANNED/NAVIGATING → MISSED
+  async markMissed(req: Request, res: Response) {
+    try {
+      const { missedReason } = req.body;
+      if (!missedReason) return res.status(400).json({ success: false, message: 'missedReason is required' });
+      const visit = await visitService.markMissed((req.params.id as string), req.user!.userId, { missedReason });
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -78,7 +152,7 @@ export const visitController = {
 
   async approve(req: Request, res: Response) {
     try {
-      const visit = await visitService.approve(req.params.id as string as string, req.user!.userId);
+      const visit = await visitService.approve((req.params.id as string), req.user!.userId);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -89,7 +163,7 @@ export const visitController = {
     try {
       const { reason } = req.body;
       if (!reason) return res.status(400).json({ success: false, message: 'Rejection reason required' });
-      const visit = await visitService.reject(req.params.id as string as string, req.user!.userId, reason);
+      const visit = await visitService.reject((req.params.id as string), req.user!.userId, reason);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });

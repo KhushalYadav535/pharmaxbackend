@@ -36,10 +36,26 @@ enum VisitType {
 
 enum VisitStatus {
   PLANNED
+  NAVIGATING
   CHECKED_IN
-  COMPLETED
+  PREPARING
+  ENGAGING
+  DETAILING
+  CHECKED_OUT
+  REPORT_PENDING
+  REPORTED
+  NEXT_CALL
+  COMPLETED // kept for backward compatibility — REPORTED is the canonical done state
   MISSED
   CANCELLED
+}
+
+enum DayStatus {
+  NOT_STARTED
+  STARTED
+  IN_PROGRESS
+  DAY_END_REVIEW
+  CLOSED
 }
 
 enum ApprovalStatus {
@@ -877,14 +893,23 @@ model Visit {
   plannedDate     DateTime
   checkInTime     DateTime?
   checkOutTime    DateTime?
+  reportSubmittedAt DateTime? // set when status → REPORTED
   durationMinutes Int?
 
   // GPS
-  checkInLat     Float?
-  checkInLng     Float?
-  checkInAddress String?
-  checkOutLat    Float?
-  checkOutLng    Float?
+  checkInLat        Float?
+  checkInLng        Float?
+  checkInAddress    String?
+  checkInGpsAccuracy Float?
+  checkOutLat       Float?
+  checkOutLng       Float?
+
+  // Unplanned call
+  isUnplanned      Boolean @default(false)
+  unplannedReason  String?
+
+  // Missed call
+  missedReason String?
 
   // Target entity (polymorphic)
   doctorId      String?
@@ -899,13 +924,13 @@ model Visit {
   stockist      Stockist?    @relation(fields: [stockistId], references: [id])
 
   // FFMS Visit Report Fields
-  visitPurpose     String? // Visit Purpose
-  visitFeedback    String? // Visit Feedback
-  nextVisit        DateTime? // Next Visit date
-  remarks          String? // Remarks
-  jointVisit       Boolean   @default(false) // Joint Visit (Yes/No radio)
-  jointVisitWith   String? // Joint Visit with whom (ASM, Management)
-  productsPromoted String[] // Products Promoted (FK Product Master)
+  visitPurpose     String?
+  visitFeedback    String?
+  nextVisit        DateTime?
+  remarks          String?
+  jointVisit       Boolean   @default(false)
+  jointVisitWith   String?
+  productsPromoted String[]
 
   // Legacy content fields (kept for backward compat)
   productsDiscussed  String[]
@@ -1085,11 +1110,31 @@ model OrderItem {
   product       Product @relation(fields: [productId], references: [id])
   quantity      Int // Product Quantity
   productScheme String? // Product Scheme (from FFMS Order sheet)
+  tradeSchemeId String?
+  tradeScheme   TradeScheme? @relation(fields: [tradeSchemeId], references: [id])
   unitPrice     Float
   discount      Float   @default(0)
   totalPrice    Float
 
   @@map("order_items")
+}
+
+model TradeScheme {
+  id           String      @id @default(uuid())
+  name         String
+  description  String?
+  discountType String      @default("PERCENTAGE") // PERCENTAGE, FLAT, FREE_ITEM
+  discountValue Float      @default(0)
+  minQuantity  Int?
+  validFrom    DateTime?
+  validTo      DateTime?
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  orderItems   OrderItem[]
+
+  @@map("trade_schemes")
 }
 
 // â”€â”€â”€ FFMS: Stock Reporting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1225,7 +1270,7 @@ model Survey {
   @@map("surveys")
 }
 
-// â”€â”€â”€ FFMS: Target â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── FFMS: Target ─────────────────────────────────────────────────────────────────────────────────
 
 model Target {
   id           String    @id @default(uuid())
@@ -1242,17 +1287,23 @@ model Target {
 // â”€â”€â”€ Attendance & Leave â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 model Attendance {
-  id           String           @id @default(uuid())
-  userId       String
-  user         User             @relation(fields: [userId], references: [id])
-  date         DateTime
-  status       AttendanceStatus
-  checkInTime  DateTime?
-  checkOutTime DateTime?
-  checkInLat   Float?
-  checkInLng   Float?
-  notes        String?
-  createdAt    DateTime         @default(now())
+  id                String           @id @default(uuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id])
+  date              DateTime
+  status            AttendanceStatus
+  dayStatus         DayStatus        @default(IN_PROGRESS)
+  checkInTime       DateTime?
+  checkOutTime      DateTime?
+  checkInLat        Float?
+  checkInLng        Float?
+  checkInGpsAccuracy Float?
+  deviceId          String?
+  authMethod        String?          // biometric | pin | password
+  notes             String?
+  createdAt         DateTime         @default(now())
+
+  dayStateLogs DayStateLog[]
 
   @@unique([userId, date])
   @@map("attendances")
@@ -1430,4 +1481,22 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+// ─── Day State Log (audit trail for day transitions) ───────────────────────
+
+model DayStateLog {
+  id           String     @id @default(uuid())
+  userId       String
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id])
+  fromStatus   DayStatus?
+  toStatus     DayStatus
+  reason       String?
+  lat          Float?
+  lng          Float?
+  deviceId     String?
+  createdAt    DateTime   @default(now())
+
+  @@map("day_state_logs")
 }

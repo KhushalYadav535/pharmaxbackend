@@ -8,19 +8,20 @@ export const tourPlanController = {
       const isAdmin = ['SUPER_ADMIN', 'SALES_ADMIN', 'NSM', 'ZM'].includes(user?.role);
       const isManager = ['ASM', 'RSM'].includes(user?.role);
 
+      const filters: any = { ...req.query };
       // If normal MR, force their own userId (security)
       if (!isAdmin && !isManager) {
-        req.query.userId = user?.userId;
+        filters.userId = user?.userId || user?.id;
       } 
       // If manager/admin didn't specify a userId, and they are viewing the mobile app, 
       // they might also want to see their own plans (if managers make plans), 
       // but usually the app wants the logged in user's plan.
       // So if no userId is passed, default to the logged in user's ID
-      else if (!req.query.userId) {
-        req.query.userId = user?.userId;
+      else if (!filters.userId) {
+        filters.userId = user?.userId || user?.id;
       }
 
-      const data = await tourPlanService.list(req.query);
+      const data = await tourPlanService.list(filters);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

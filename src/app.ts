@@ -41,6 +41,7 @@ import headquarterRoutes from './routes/headquarters.routes';
 import dailyReportRoutes from './routes/dailyreports.routes';
 import interiorRoutes from './routes/interiors.routes';
 import dashboardRoutes from './routes/dashboard.routes';
+import dayRoutes from './routes/day.routes';
 
 const app = express();
 
@@ -104,6 +105,7 @@ app.use(`${API}/headquarters`, headquarterRoutes);
 app.use(`${API}/daily-reports`, dailyReportRoutes);
 app.use(`${API}/interiors`, interiorRoutes);
 app.use(`${API}/dashboard`, dashboardRoutes);
+app.use(`${API}/day`, dayRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

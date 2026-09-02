@@ -246,7 +246,7 @@ router.get('/day-end-summary', async (req, res) => {
     });
 
     const planned = visits.length;
-    const completed = visits.filter(v => v.status === 'COMPLETED').length;
+    const completed = visits.filter(v => ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
     const missed = visits.filter(v => v.status === 'MISSED').length;
     
     // Performance
@@ -255,10 +255,10 @@ router.get('/day-end-summary', async (req, res) => {
     const totalTravel = completed * 5;
 
     // Call Breakdown
-    const doctors = visits.filter(v => v.visitType === 'DOCTOR' && v.status === 'COMPLETED').length;
-    const hospitals = visits.filter(v => v.visitType === 'HOSPITAL' && v.status === 'COMPLETED').length;
-    const retailers = visits.filter(v => v.visitType === 'RETAILER' && v.status === 'COMPLETED').length;
-    const stockists = visits.filter(v => v.visitType === 'STOCKIST' && v.status === 'COMPLETED').length;
+    const doctors = visits.filter(v => v.visitType === 'DOCTOR' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
+    const hospitals = visits.filter(v => v.visitType === 'HOSPITAL' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
+    const retailers = visits.filter(v => v.visitType === 'RETAILER' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
+    const stockists = visits.filter(v => v.visitType === 'STOCKIST' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
 
     // Business
     let productsDetailed = 0;
@@ -266,7 +266,7 @@ router.get('/day-end-summary', async (req, res) => {
     let samplesDistributed = 0;
     let newOpportunities = 0;
 
-    visits.filter(v => v.status === 'COMPLETED').forEach(v => {
+    visits.filter(v => ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).forEach(v => {
       productsDetailed += v.productsDiscussed?.length || 0;
       newOpportunities += v.businessSignal?.length || 0;
       v.orders.forEach(o => ordersBooked += (o.totalAmount || 0));
