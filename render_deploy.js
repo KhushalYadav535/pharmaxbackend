@@ -26,4 +26,12 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n4. Running Biocros data migration & purge seed...');
+  execSync('npx tsx prisma/seed_biocros.ts', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to run Biocros data migration!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
