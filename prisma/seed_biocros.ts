@@ -351,6 +351,27 @@ export async function runBiocrosSeed() {
     { name: 'ARGICROS PINK SACHET', packing: '20', category: 'Sachet', units: 20, mrp: 450, ptr: 360, pts: 315, code: 'BC-ARG-PNK' },
   ];
 
+  const productImagesMap: Record<string, string> = {
+    'ALKATAGE 200 ml': '/uploads/content/Alkatage-Generated.png',
+    'BENZYLAC TABLET': '/uploads/content/Benzylac-generated.png',
+    'BENZYLAC SYRUP': '/uploads/content/Benzylac-generated.png',
+    'BIOFIT PLUS M': '/uploads/content/BioFitPlus-M-Generated.png',
+    'BIOFIT PLUS F': '/uploads/content/BiofitPlus-F-Generated.png',
+    'BIOSPORE 4 TABLET': '/uploads/content/Biospore4-Tab-Generated.png',
+    'BIOSPORE 4 SACHET': '/uploads/content/Biospore4-generated.png',
+    'BIOSPORE TABLET': '/uploads/content/Biospore4-Tab-Generated.png',
+    'BIOSPORE SACHET': '/uploads/content/Biospore4-generated.png',
+    'MONTECROS L': '/uploads/content/Montecros-Generated.png',
+    'PNCROS 40': '/uploads/content/Pncors-40-Generated.png',
+    'PNCROS DRS CAPSULE': '/uploads/content/Pncors-40-Generated.png',
+    'RINOVAC SUSPENSION': '/uploads/content/RinovacPlus-Generated.png',
+    'RINOVAC DROP': '/uploads/content/RinovacPlus-Generated.png',
+    'RINOVAC TABLET': '/uploads/content/RinovacTab-Generated.png',
+    'VEEPROS D3 CAPSULE': '/uploads/content/VeeprosD3-Landscape.png',
+    'VEEPROS D3 NANOSHOTS': '/uploads/content/VeeprosD3-Landscape.png',
+    'VEEPROS SACHET': '/uploads/content/VeeprosD3-Landscape.png',
+  };
+
   let pIndex = 1;
   for (const p of biocrosProducts) {
     await prisma.product.create({
@@ -365,12 +386,142 @@ export async function runBiocrosSeed() {
         ptr: p.ptr,
         pts: p.pts,
         description: `Packing: ${p.packing} | Scheme: 10+1`,
+        productImage: productImagesMap[p.name] || null,
         isActive: true,
       },
     });
     pIndex++;
   }
   console.log(`✅ ${biocrosProducts.length} Biocros Products created with 10+1 Schemes.`);
+
+  // ── 4b. SEED DIGITAL DETAILING CONTENT (FWD PRODUCT IMAGES) ────────────────
+  console.log('📱 Seeding Digital Detailing Content...');
+  const campaign = await prisma.campaign.create({
+    data: {
+      name: 'Biocros 2026 Core Detailing Campaign',
+      description: 'Core product detailing materials for doctors and healthcare specialists.',
+      startDate: new Date('2026-01-01'),
+      endDate: new Date('2026-12-31'),
+      isActive: true,
+    },
+  });
+
+  const digitalDetailingContents = [
+    {
+      title: 'Alkatage 200 ml - Visual Aid',
+      productName: 'ALKATAGE 200 ml',
+      fileUrl: '/uploads/content/Alkatage-Generated.png',
+      thumbnailUrl: '/uploads/content/Alkatage-Generated.png',
+      description: 'Complete digital visual aid for Alkatage systemic alkalizer formulation.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Benzylac Tablet - Clinical Presentation',
+      productName: 'BENZYLAC TABLET',
+      fileUrl: '/uploads/content/Benzylac-generated.png',
+      thumbnailUrl: '/uploads/content/Benzylac-generated.png',
+      description: 'Digital detailing presentation detailing efficacy and indications.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Benzylac Advanced - Mode of Action',
+      productName: 'BENZYLAC TABLET',
+      fileUrl: '/uploads/content/BenzylacAdvanced-Generated.png',
+      thumbnailUrl: '/uploads/content/BenzylacAdvanced-Generated.png',
+      description: 'Advanced detailing slide covering pharmacology and doctor FAQ.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'BioFit Plus M - Men Vitality Detailing',
+      productName: 'BIOFIT PLUS M',
+      fileUrl: '/uploads/content/BioFitPlus-M-Generated.png',
+      thumbnailUrl: '/uploads/content/BioFitPlus-M-Generated.png',
+      description: 'Comprehensive micronutrient and antioxidant detailing sheet.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Biofit Plus F - Women Health Detailing',
+      productName: 'BIOFIT PLUS F',
+      fileUrl: '/uploads/content/BiofitPlus-F-Generated.png',
+      thumbnailUrl: '/uploads/content/BiofitPlus-F-Generated.png',
+      description: 'Essential vitamins & minerals formulation for female healthcare.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Biospore 4 Tablet - Gut Microbiome Slide',
+      productName: 'BIOSPORE 4 TABLET',
+      fileUrl: '/uploads/content/Biospore4-Tab-Generated.png',
+      thumbnailUrl: '/uploads/content/Biospore4-Tab-Generated.png',
+      description: 'Probiotic strain specification and clinical trials overview.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Biospore 4 Sachet - Pediatric & Adult Detailing',
+      productName: 'BIOSPORE 4 SACHET',
+      fileUrl: '/uploads/content/Biospore4-generated.png',
+      thumbnailUrl: '/uploads/content/Biospore4-generated.png',
+      description: 'Spores suspension visual presentation for gastroenterology practice.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Montecros L - Allergy & Respiratory Slide',
+      productName: 'MONTECROS L',
+      fileUrl: '/uploads/content/Montecros-Generated.png',
+      thumbnailUrl: '/uploads/content/Montecros-Generated.png',
+      description: 'Montelukast & Levocetirizine dual action respiratory presentation.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Pncros 40 - PPI Detailing Visual Aid',
+      productName: 'PNCROS 40',
+      fileUrl: '/uploads/content/Pncors-40-Generated.png',
+      thumbnailUrl: '/uploads/content/Pncors-40-Generated.png',
+      description: 'Fast acid suppression and GERD symptom relief detailing slide.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Rinovac Plus Suspension - Cough & Cold Aid',
+      productName: 'RINOVAC SUSPENSION',
+      fileUrl: '/uploads/content/RinovacPlus-Generated.png',
+      thumbnailUrl: '/uploads/content/RinovacPlus-Generated.png',
+      description: 'Multi-action cold and flu formulation for family practice.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Rinovac Tablet - Anti-Cold Clinical Slide',
+      productName: 'RINOVAC TABLET',
+      fileUrl: '/uploads/content/RinovacTab-Generated.png',
+      thumbnailUrl: '/uploads/content/RinovacTab-Generated.png',
+      description: 'Symptomatic cold and allergic rhinitis clinical presentation.',
+      contentType: 'IMAGE' as const,
+    },
+    {
+      title: 'Veepros D3 - Bone & Immunity Visual',
+      productName: 'VEEPROS D3 CAPSULE',
+      fileUrl: '/uploads/content/VeeprosD3-Landscape.png',
+      thumbnailUrl: '/uploads/content/VeeprosD3-Landscape.png',
+      description: 'Cholecalciferol 60,000 IU therapeutic detailing presentation.',
+      contentType: 'IMAGE' as const,
+    },
+  ];
+
+  for (const c of digitalDetailingContents) {
+    await prisma.content.create({
+      data: {
+        title: c.title,
+        productName: c.productName,
+        fileUrl: c.fileUrl,
+        thumbnailUrl: c.thumbnailUrl,
+        description: c.description,
+        contentType: c.contentType,
+        campaignId: campaign.id,
+        version: '1.0',
+        isActive: true,
+        isDisabled: false,
+      },
+    });
+  }
+  console.log(`✅ ${digitalDetailingContents.length} Digital Detailing Content slides created.`);
 
   // ── 5. SEED AREAS, HOSPITALS, DOCTORS, AND RETAILERS PER HQ ───────────────
   console.log('🏥 Seeding Customers & Areas for each HQ...');
