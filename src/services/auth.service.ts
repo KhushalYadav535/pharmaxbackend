@@ -27,9 +27,18 @@ const generateRefreshToken = (userId: string) =>
 
 export const authService = {
   async login(input: LoginInput) {
-    const user = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
+    const email = input.email.trim().toLowerCase();
+    let user = await prisma.user.findUnique({
+      where: { email },
     });
+
+    // Fallback alias for Shubham / Subham Patil
+    if (!user && (email === 'shubhampatil255726@gmail.com' || email === 'subhampatil255726@gmail.com')) {
+      const altEmail = email === 'shubhampatil255726@gmail.com' ? 'subhampatil255726@gmail.com' : 'shubhampatil255726@gmail.com';
+      user = await prisma.user.findUnique({
+        where: { email: altEmail },
+      });
+    }
 
     if (!user || !user.isActive || user.deletedAt) {
       throw new Error('Invalid credentials');

@@ -170,6 +170,14 @@ export async function runBiocrosSeed() {
       role: UserRole.MR,
     },
     {
+      empCode: 'EMP015',
+      name: 'SHUBHAM PATIL',
+      hq: 'BURHANPUR',
+      email: 'shubhampatil255726@gmail.com',
+      phone: '+91 96178 51115',
+      role: UserRole.MR,
+    },
+    {
       empCode: 'EMP010',
       name: 'JITENDRA SINGH SENGAR',
       hq: 'KHARGOAN',
@@ -294,7 +302,7 @@ export async function runBiocrosSeed() {
   }
 
   // Map MP MRs to Ashish, Maharashtra MRs to Hitesh
-  const mpEmails = ['daporkardheeraj@gmail.com', 'sourabhuplawdiya@gmail.com', 'shayammba.dangi@gmail.com', 'mohdsameer0724@gmail.com', 'subhampatil255726@gmail.com', 'jitu.thakur04@gmail.com'];
+  const mpEmails = ['daporkardheeraj@gmail.com', 'sourabhuplawdiya@gmail.com', 'shayammba.dangi@gmail.com', 'mohdsameer0724@gmail.com', 'subhampatil255726@gmail.com', 'shubhampatil255726@gmail.com', 'jitu.thakur04@gmail.com'];
   const mhEmails = ['vijayludhekar123@gmail.com', 'kziya4600@gmail.com', 'ynbhuibhar@gmail.com', 'jayabhandakkar@gmail.com'];
 
   for (const email of mpEmails) {
@@ -307,7 +315,7 @@ export async function runBiocrosSeed() {
       await prisma.user.update({ where: { id: userMap[email].id }, data: { managerId: hitesh.id } });
     }
   }
-  console.log('✅ All 14 Biocros Employees seeded with reporting lines.');
+  console.log(`✅ All ${employeeData.length} Biocros Employees seeded with reporting lines.`);
 
   // ── 4. SEED BIOCROS PRODUCTS & SCHEMES ─────────────────────────────────────
   console.log('📦 Seeding Biocros Products & Schemes...');
@@ -631,7 +639,7 @@ export async function runBiocrosSeed() {
   console.log('   RSM        : azharshamim68@gmail.com');
   console.log('   ASM 1      : biocrosashish@gmail.com');
   console.log('   ASM 2      : hitesh2026@gmail.com');
-  console.log('   MRs (10)   : daporkardheeraj@gmail.com, sourabhuplawdiya@gmail.com, etc.');
+  console.log('   MRs        : daporkardheeraj@gmail.com, sourabhuplawdiya@gmail.com, shubhampatil255726@gmail.com, etc.');
 }
 
 if (require.main === module) {
