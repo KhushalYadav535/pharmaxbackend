@@ -138,11 +138,18 @@ export const authService = {
     return prisma.user.findUnique({
       where: { id: userId },
       select: {
-        id: true, email: true, firstName: true, lastName: true, role: true,
-        phone: true, employeeId: true, designation: true, profilePhoto: true,
+        id: true, email: true, firstName: true, middleName: true, lastName: true, prefix: true, role: true,
+        phone: true, employeeId: true, designation: true, department: true, grade: true, profilePhoto: true,
+        dateOfJoining: true, qualification: true, gender: true, bloodGroup: true, maritalStatus: true,
+        address1: true, address2: true, city: true, district: true, state: true, pin: true,
+        whatsappNumber: true, dateOfBirth: true, marriageAnniversary: true,
+        facebook: true, instagram: true, twitter: true, linkedin: true,
+        spouseName: true, dependents: true, aadharNumber: true, panNumber: true,
         lastLoginAt: true, createdAt: true,
+        hqId: true,
+        hq: { select: { id: true, name: true, code: true } },
         territories: { include: { territory: true } },
-        manager: { select: { id: true, firstName: true, lastName: true, role: true } },
+        manager: { select: { id: true, firstName: true, lastName: true, role: true, email: true } },
       },
     });
   },

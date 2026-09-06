@@ -100,10 +100,18 @@ export const visitService = {
       ...(status && { status }),
       ...(visitType && { visitType }),
       ...(doctorId && { doctorId }),
-      ...(fromDate || toDate
-        ? { plannedDate: { gte: fromDate ? new Date(fromDate) : undefined, lte: toDate ? new Date(toDate) : undefined } }
-        : {}),
     };
+
+    if (fromDate || toDate) {
+      const fDate = fromDate ? new Date(new Date(fromDate).setHours(0, 0, 0, 0)) : undefined;
+      const tDate = toDate ? new Date(new Date(toDate).setHours(23, 59, 59, 999)) : undefined;
+      where.OR = [
+        { plannedDate: { gte: fDate, lte: tDate } },
+        { checkInTime: { gte: fDate, lte: tDate } },
+        { checkOutTime: { gte: fDate, lte: tDate } },
+        { createdAt: { gte: fDate, lte: tDate } },
+      ];
+    }
 
     if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {
       where.userId = userId;
@@ -127,7 +135,7 @@ export const visitService = {
         },
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { plannedDate: 'asc' },
+        orderBy: { plannedDate: 'desc' },
       }),
       prisma.visit.count({ where }),
     ]);
@@ -144,10 +152,18 @@ export const visitService = {
       ...(status && { status }),
       ...(visitType && { visitType }),
       ...(mrId && { userId: mrId }),
-      ...(fromDate || toDate
-        ? { plannedDate: { gte: fromDate ? new Date(fromDate) : undefined, lte: toDate ? new Date(toDate) : undefined } }
-        : {}),
     };
+
+    if (fromDate || toDate) {
+      const fDate = fromDate ? new Date(new Date(fromDate).setHours(0, 0, 0, 0)) : undefined;
+      const tDate = toDate ? new Date(new Date(toDate).setHours(23, 59, 59, 999)) : undefined;
+      where.OR = [
+        { plannedDate: { gte: fDate, lte: tDate } },
+        { checkInTime: { gte: fDate, lte: tDate } },
+        { checkOutTime: { gte: fDate, lte: tDate } },
+        { createdAt: { gte: fDate, lte: tDate } },
+      ];
+    }
 
     if (!mrId) {
       if (['SUPER_ADMIN', 'SALES_ADMIN'].includes(userRole)) {
@@ -530,20 +546,32 @@ export const visitService = {
     const start = todayStart();
     const end = todayEnd();
 
-    const [planned, reported, reportPending, missed, active, visits] = await Promise.all([
-      prisma.visit.count({ where: { userId, plannedDate: { gte: start, lte: end } } }),
+    const todayMatchWhere = {
+      userId,
+      OR: [
+        { plannedDate: { gte: start, lte: end } },
+        { checkInTime: { gte: start, lte: end } },
+        { checkOutTime: { gte: start, lte: end } },
+        { createdAt: { gte: start, lte: end } },
+      ],
+    };
+
+    const [totalToday, reported, reportPending, missed, active, visits] = await Promise.all([
+      prisma.visit.count({ where: todayMatchWhere }),
       // §4.1: A visit is completed ONLY after report is submitted
-      prisma.visit.count({ where: { userId, plannedDate: { gte: start, lte: end }, status: 'REPORTED' } }),
+      prisma.visit.count({ where: { ...todayMatchWhere, status: 'REPORTED' } }),
       // §4.1 + Gap #1 fix: checkOut now sets REPORT_PENDING directly.
       // CHECKED_OUT retained in query for backward compatibility with existing records.
-      prisma.visit.count({ where: { userId, plannedDate: { gte: start, lte: end }, status: { in: ['CHECKED_OUT', 'REPORT_PENDING'] } } }),
-      prisma.visit.count({ where: { userId, plannedDate: { gte: start, lte: end }, status: 'MISSED' } }),
-      prisma.visit.count({ where: { userId, plannedDate: { gte: start, lte: end }, status: { in: ACTIVE_VISIT_STATUSES as any } } }),
+      prisma.visit.count({ where: { ...todayMatchWhere, status: { in: ['CHECKED_OUT', 'REPORT_PENDING'] } } }),
+      prisma.visit.count({ where: { ...todayMatchWhere, status: 'MISSED' } }),
+      prisma.visit.count({ where: { ...todayMatchWhere, status: { in: ACTIVE_VISIT_STATUSES as any } } }),
       prisma.visit.findMany({
-        where: { userId, plannedDate: { gte: start, lte: end } },
-        select: { visitType: true, status: true },
+        where: todayMatchWhere,
+        select: { visitType: true, status: true, isUnplanned: true },
       }),
     ]);
+
+    const planned = Math.max(totalToday, visits.filter((v: any) => !v.isUnplanned).length);
 
     const breakdown = {
       doctors:   visits.filter((v) => v.visitType === 'DOCTOR').length,

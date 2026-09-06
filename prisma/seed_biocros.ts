@@ -632,6 +632,69 @@ export async function runBiocrosSeed() {
   }
 
   console.log('✅ Customers and Areas populated across all Headquarters.');
+
+  // ── 6. SEED BIOCROS PRODUCT TRADE SCHEMES (10+1) ─────────────────────────
+  console.log('🏷️ Seeding Trade Schemes from Biocros Product Scheme.xlsx...');
+  const biocrosSchemes = [
+    { product: 'HEMOVAC SYRUP', packing: '300ML', scheme: '10+1' },
+    { product: 'HEMOVAC TABLET', packing: '30 Tabs', scheme: '10+1' },
+    { product: 'BIOSPORE SACHET', packing: '50 Sachets', scheme: '10+1' },
+    { product: 'BIOSPORE TABLET', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'BIOSPORE 4 SACHET', packing: '50 Sachets', scheme: '10+1' },
+    { product: 'BIOSPORE 4 TABLET', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'PNCROS DRS CAPSULE', packing: '10 Caps', scheme: '10+1' },
+    { product: 'PNCROS 40', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'RINOVAC SUSPENSION', packing: '200ML', scheme: '10+1' },
+    { product: 'RINOVAC TABLET', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'RINOVAC DROP', packing: '15ML', scheme: '10+1' },
+    { product: 'ALKATAGE 200 ml', packing: '200ML', scheme: '10+1' },
+    { product: 'CALCICAL TABLET', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'BENZYLAC TABLET', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'BENZYLAC SYRUP', packing: '200ML', scheme: '10+1' },
+    { product: 'VEEPROS D3 CAPSULE', packing: '4 Caps', scheme: '10+1' },
+    { product: 'VEEPROS D3 NANOSHOTS', packing: '4 Shots', scheme: '10+1' },
+    { product: 'VEEPROS SACHET', packing: '20 Sachets', scheme: '10+1' },
+    { product: 'BRENZ POWDER', packing: '105GM', scheme: '10+1' },
+    { product: 'MONTECROS L', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'BIOFIT PLUS M', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'BIOFIT PLUS F', packing: '10 Tabs', scheme: '10+1' },
+    { product: 'ARGICROS BLUE SACHET', packing: '20 Sachets', scheme: '10+1' },
+    { product: 'ARGICROS PINK SACHET', packing: '20 Sachets', scheme: '10+1' },
+  ];
+
+  const schemeStart = new Date('2026-01-01');
+  const schemeEnd = new Date('2026-12-31T23:59:59.999Z');
+
+  for (const s of biocrosSchemes) {
+    await prisma.scheme.create({
+      data: {
+        name: `${s.product} - ${s.scheme} Trade Scheme`,
+        description: `Order 10 units of ${s.product} (${s.packing}) and receive 1 unit complimentary. Standard trade promotion.`,
+        type: 'free_goods',
+        startDate: schemeStart,
+        endDate: schemeEnd,
+        targetRole: 'ALL',
+        minPurchase: 10,
+        reward: `${s.scheme} Free Goods (${s.packing})`,
+        isActive: true,
+      },
+    });
+
+    await prisma.tradeScheme.create({
+      data: {
+        name: `${s.product} (${s.scheme})`,
+        description: `Buy 10 get 1 free on ${s.product} (${s.packing})`,
+        discountType: 'FREE_ITEM',
+        discountValue: 1,
+        minQuantity: 10,
+        validFrom: schemeStart,
+        validTo: schemeEnd,
+        isActive: true,
+      },
+    });
+  }
+  console.log(`✅ ${biocrosSchemes.length} Trade Schemes created.`);
+
   console.log('\n🎉 Biocros Migration & Seeding completed successfully!');
   console.log('📋 Login Credentials for all accounts:');
   console.log('   Password: password123');
