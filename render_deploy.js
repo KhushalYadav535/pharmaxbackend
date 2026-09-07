@@ -58,4 +58,12 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n8. Running Indore doctor list import...');
+  execSync('node import_indore_doctors.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to import Indore doctors!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');

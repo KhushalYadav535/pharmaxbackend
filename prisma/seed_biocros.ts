@@ -671,8 +671,8 @@ export async function runBiocrosSeed() {
       },
     });
 
-    // Create Doctors (skip Ujjain & Burhanpur dummy doctors as real doctors are imported from Excel lists)
-    if (hq.name !== 'Ujjain' && hq.name !== 'Burhanpur') {
+    // Create Doctors (skip Ujjain, Burhanpur & Indore dummy doctors as real doctors are imported from Excel lists)
+    if (hq.name !== 'Ujjain' && hq.name !== 'Burhanpur' && hq.name !== 'Indore') {
       await prisma.doctor.create({
         data: {
           firstName: 'Rajesh',
@@ -815,6 +815,19 @@ export async function runBiocrosSeed() {
     });
   } catch (e: any) {
     console.error('⚠️ Note: import_burhanpur_doctors failed or skipped:', e.message);
+  }
+
+  // Import real Indore Doctors
+  try {
+    const { execSync } = require('child_process');
+    const path = require('path');
+    console.log('\n🏥 Importing authentic Indore Doctor list (100 doctors)...');
+    execSync('node import_indore_doctors.js', {
+      stdio: 'inherit',
+      cwd: path.resolve(__dirname, '..'),
+    });
+  } catch (e: any) {
+    console.error('⚠️ Note: import_indore_doctors failed or skipped:', e.message);
   }
 
   console.log('\n🎉 Biocros Migration & Seeding completed successfully!');
