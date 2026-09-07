@@ -577,41 +577,43 @@ export async function runBiocrosSeed() {
       },
     });
 
-    // Create Doctors
-    await prisma.doctor.create({
-      data: {
-        firstName: 'Rajesh',
-        lastName: 'Sharma',
-        specialty: 'Physician',
-        qualification: 'MBBS, MD',
-        classification: DoctorClassification.A_PLUS,
-        city: hq.name,
-        state: hq.state,
-        territoryId: terr.id,
-        hqId: terr.id,
-        areaId: area.id,
-        hospitalId: hosp.id,
-        approvalStatus: 'APPROVED' as any,
-        isActive: true,
-      },
-    });
+    // Create Doctors (skip Ujjain dummy doctors as real doctors are imported from DOCTOR List Formatmz.xlsx)
+    if (hq.name !== 'Ujjain') {
+      await prisma.doctor.create({
+        data: {
+          firstName: 'Rajesh',
+          lastName: 'Sharma',
+          specialty: 'Physician',
+          qualification: 'MBBS, MD',
+          classification: DoctorClassification.A_PLUS,
+          city: hq.name,
+          state: hq.state,
+          territoryId: terr.id,
+          hqId: terr.id,
+          areaId: area.id,
+          hospitalId: hosp.id,
+          approvalStatus: 'APPROVED' as any,
+          isActive: true,
+        },
+      });
 
-    await prisma.doctor.create({
-      data: {
-        firstName: 'Sunil',
-        lastName: 'Verma',
-        specialty: 'Gastroenterology',
-        qualification: 'MBBS, DNB',
-        classification: DoctorClassification.A,
-        city: hq.name,
-        state: hq.state,
-        territoryId: terr.id,
-        hqId: terr.id,
-        areaId: area.id,
-        approvalStatus: 'APPROVED' as any,
-        isActive: true,
-      },
-    });
+      await prisma.doctor.create({
+        data: {
+          firstName: 'Sunil',
+          lastName: 'Verma',
+          specialty: 'Gastroenterology',
+          qualification: 'MBBS, DNB',
+          classification: DoctorClassification.A,
+          city: hq.name,
+          state: hq.state,
+          territoryId: terr.id,
+          hqId: terr.id,
+          areaId: area.id,
+          approvalStatus: 'APPROVED' as any,
+          isActive: true,
+        },
+      });
+    }
 
     // Create Retailers
     await prisma.retailer.create({
@@ -694,6 +696,19 @@ export async function runBiocrosSeed() {
     });
   }
   console.log(`✅ ${biocrosSchemes.length} Trade Schemes created.`);
+
+  // Import real Ujjain Doctors
+  try {
+    const { execSync } = require('child_process');
+    const path = require('path');
+    console.log('\n🏥 Importing authentic Ujjain Doctor list (99 doctors)...');
+    execSync('node import_ujjain_doctors.js', {
+      stdio: 'inherit',
+      cwd: path.resolve(__dirname, '..'),
+    });
+  } catch (e: any) {
+    console.error('⚠️ Note: import_ujjain_doctors failed or skipped:', e.message);
+  }
 
   console.log('\n🎉 Biocros Migration & Seeding completed successfully!');
   console.log('📋 Login Credentials for all accounts:');

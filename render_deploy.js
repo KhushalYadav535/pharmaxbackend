@@ -34,4 +34,12 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n5. Running Ujjain doctor list import...');
+  execSync('node import_ujjain_doctors.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to import Ujjain doctors!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
