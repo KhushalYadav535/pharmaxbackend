@@ -42,4 +42,12 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n6. Syncing Digital Detailing content & product images...');
+  execSync('node seed_digital_detailing.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to seed Digital Detailing content!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
