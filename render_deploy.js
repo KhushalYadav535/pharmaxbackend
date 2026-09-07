@@ -50,4 +50,12 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n7. Running Burhanpur doctor list import...');
+  execSync('node import_burhanpur_doctors.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to import Burhanpur doctors!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
