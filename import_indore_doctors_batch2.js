@@ -8,7 +8,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('🚀 Starting Indore Doctor List Import...\n');
+  console.log('🚀 Starting Indore Doctor List Import (Batch 2 - DOCTOR List Format (1).xlsx)...\n');
 
   // 1. Locate Indore Territory (Headquarter)
   let indoreHq = await prisma.territory.findFirst({
@@ -42,21 +42,7 @@ async function main() {
 
   const areaMap = {};
 
-  // Check if existing "Indore Central Area" exists, we can rename it to "Vijay Nagar"
-  const existingCentralArea = await prisma.area.findFirst({
-    where: { hqId: indoreHq.id, name: 'Indore Central Area' }
-  });
-  if (existingCentralArea) {
-    const updated = await prisma.area.update({
-      where: { id: existingCentralArea.id },
-      data: { name: 'Vijay Nagar', areaCode: 'AREA-IND-VIJAY', district: 'Indore', state: 'Madhya Pradesh', pinCode: '452010' }
-    });
-    areaMap['Vijay Nagar'] = updated;
-    console.log(`📍 Renamed existing "Indore Central Area" -> "Vijay Nagar" (${updated.id})`);
-  }
-
   for (const cfg of areaConfigs) {
-    if (areaMap[cfg.name]) continue;
     let area = await prisma.area.findFirst({
       where: {
         hqId: indoreHq.id,
@@ -83,74 +69,20 @@ async function main() {
     areaMap[cfg.name] = area;
   }
 
-  // 3. Remove/deactivate initial placeholder mock doctors in Indore HQ
-  const dummyDocIds = [
-    '424ca286-98e2-4a2e-9013-9c15c078ee14', // Rajesh Sharma
-    '6851f22d-aab1-420c-9a61-578c901f621d', // Sunil Verma
-  ];
-  for (const dummyId of dummyDocIds) {
-    const doc = await prisma.doctor.findUnique({ where: { id: dummyId } });
-    if (doc && doc.hqId === indoreHq.id) {
-      const visitCount = await prisma.visit.count({ where: { doctorId: dummyId } });
-      if (visitCount === 0) {
-        await prisma.doctor.delete({ where: { id: dummyId } });
-        console.log(`🗑️ Deleted placeholder doctor: ${doc.firstName} ${doc.lastName} (${dummyId})`);
-      } else {
-        await prisma.doctor.update({
-          where: { id: dummyId },
-          data: { isActive: false, deletedAt: new Date() }
-        });
-        console.log(`🔒 Soft-deleted placeholder doctor: ${doc.firstName} ${doc.lastName} (${dummyId})`);
-      }
-    }
+  // 3. Read doctors data from indore_doctors_batch2.json
+  const jsonPath = path.join(__dirname, 'indore_doctors_batch2.json');
+  if (!fs.existsSync(jsonPath)) {
+    throw new Error(`❌ indore_doctors_batch2.json not found at ${jsonPath}`);
   }
+  const doctorsData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  console.log(`\n📋 Loaded ${doctorsData.length} doctors from indore_doctors_batch2.json`);
 
-  // Also clean up any un-coded doctors named 'Rajesh Sharma' or 'Sunil Verma' in Indore HQ if generated with fresh IDs
-  const remainingDummies = await prisma.doctor.findMany({
-    where: {
-      hqId: indoreHq.id,
-      doctorCode: null,
-      OR: [
-        { firstName: 'Rajesh', lastName: 'Sharma' },
-        { firstName: 'Sunil', lastName: 'Verma' }
-      ]
-    }
-  });
-  for (const dummy of remainingDummies) {
-    const visitCount = await prisma.visit.count({ where: { doctorId: dummy.id } });
-    if (visitCount === 0) {
-      await prisma.doctor.delete({ where: { id: dummy.id } });
-      console.log(`🗑️ Deleted un-coded dummy doctor: ${dummy.firstName} ${dummy.lastName} (${dummy.id})`);
-    } else {
-      await prisma.doctor.update({
-        where: { id: dummy.id },
-        data: { isActive: false, deletedAt: new Date() }
-      });
-      console.log(`🔒 Soft-deleted un-coded dummy doctor: ${dummy.firstName} ${dummy.lastName} (${dummy.id})`);
-    }
-  }
-
-  // 4. Read doctors data from indore_doctors.json and indore_doctors_batch2.json
-  const jsonPath1 = path.join(__dirname, 'indore_doctors.json');
-  if (!fs.existsSync(jsonPath1)) {
-    throw new Error(`❌ indore_doctors.json not found at ${jsonPath1}`);
-  }
-  let doctorsData = JSON.parse(fs.readFileSync(jsonPath1, 'utf8'));
-
-  const jsonPath2 = path.join(__dirname, 'indore_doctors_batch2.json');
-  if (fs.existsSync(jsonPath2)) {
-    const batch2 = JSON.parse(fs.readFileSync(jsonPath2, 'utf8'));
-    doctorsData = doctorsData.concat(batch2);
-    console.log(`\n📋 Loaded ${batch2.length} doctors from indore_doctors_batch2.json`);
-  }
-  console.log(`📋 Total doctors to process: ${doctorsData.length}`);
-
-  // 5. Upsert doctors into database
+  // 4. Upsert doctors into database
   let insertedCount = 0;
   let updatedCount = 0;
 
   for (const d of doctorsData) {
-    const targetArea = areaMap[d.area] || areaMap['Vijay Nagar'];
+    const targetArea = areaMap[d.area] || areaMap['Palasia - Geeta Bhawan'];
 
     const doctorPayload = {
       doctorCode: d.doctorCode,
@@ -163,10 +95,10 @@ async function main() {
       classification: d.classification,
       category: d.category,
       prescriber: true,
-      prescriptionPotential: 40000,
-      phone: d.phone,
-      whatsappNumber: d.whatsappNumber,
-      email: d.email,
+      prescriptionPotential: d.prescriptionPotential || 35000,
+      phone: d.phone || null,
+      whatsappNumber: d.whatsappNumber || null,
+      email: d.email || null,
       address: d.address,
       address1: d.address1,
       city: d.city,
@@ -200,12 +132,12 @@ async function main() {
     }
   }
 
-  console.log(`\n🎉 Import Complete!`);
+  console.log(`\n🎉 Batch 2 Import Complete!`);
   console.log(`   - Newly Inserted: ${insertedCount}`);
   console.log(`   - Updated/Refreshed: ${updatedCount}`);
   console.log(`   - Total Processed: ${doctorsData.length}`);
 
-  // 6. Summary Verification
+  // 5. Summary Verification
   const totalInDb = await prisma.doctor.count({
     where: {
       hqId: indoreHq.id,
@@ -228,7 +160,7 @@ async function main() {
     orderBy: { name: 'asc' }
   });
 
-  console.log(`\n📊 Active Doctors in Indore HQ: ${totalInDb}`);
+  console.log(`\n📊 Total Active Doctors in Indore HQ: ${totalInDb}`);
   console.log('📍 Area Distribution:');
   for (const a of areaBreakdown) {
     console.log(`   - ${a.name} (${a.areaCode}): ${a._count.doctors} doctors`);
@@ -252,7 +184,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('❌ Error executing import_indore_doctors:', e);
+    console.error('❌ Error executing import_indore_doctors_batch2:', e);
     process.exit(1);
   })
   .finally(async () => {
