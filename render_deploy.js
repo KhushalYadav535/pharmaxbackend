@@ -66,4 +66,13 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n9. Running Khargone doctor list import...');
+  execSync('node import_khargone_doctors.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to import Khargone doctors!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
+
