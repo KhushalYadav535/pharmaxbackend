@@ -149,7 +149,7 @@ export async function runBiocrosSeed() {
       empCode: 'EMP007',
       name: 'SHYAM LAL DANGI',
       hq: 'INDORE',
-      email: 'shayammba.dangi@gmail.com',
+      email: 'shyammba.dangi@gmail.com',
       phone: '+91 83493 33311',
       role: UserRole.MR,
     },
@@ -302,7 +302,7 @@ export async function runBiocrosSeed() {
   }
 
   // Map MP MRs to Ashish, Maharashtra MRs to Hitesh
-  const mpEmails = ['daporkardheeraj@gmail.com', 'sourabhuplawdiya@gmail.com', 'shayammba.dangi@gmail.com', 'mohdsameer0724@gmail.com', 'subhampatil255726@gmail.com', 'shubhampatil255726@gmail.com', 'jitu.thakur04@gmail.com'];
+  const mpEmails = ['daporkardheeraj@gmail.com', 'sourabhuplawdiya@gmail.com', 'shyammba.dangi@gmail.com', 'mohdsameer0724@gmail.com', 'subhampatil255726@gmail.com', 'shubhampatil255726@gmail.com', 'jitu.thakur04@gmail.com'];
   const mhEmails = ['vijayludhekar123@gmail.com', 'kziya4600@gmail.com', 'ynbhuibhar@gmail.com', 'jayabhandakkar@gmail.com'];
 
   for (const email of mpEmails) {
