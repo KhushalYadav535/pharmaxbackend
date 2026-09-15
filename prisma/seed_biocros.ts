@@ -386,6 +386,33 @@ export async function runBiocrosSeed() {
     'ARGICROS PINK SACHET': '/uploads/content/Argicros-Pink-Generated.png',
   };
 
+  const productSpecialtyMap: Record<string, string> = {
+    'ARGICROS PINK SACHET': 'Gynecology',
+    'ARGICROS BLUE SACHET': 'Gynecology',
+    'BIOFIT PLUS F': 'Gynecology, General Medicine',
+    'HEMOVAC SYRUP': 'Gynecology, General Medicine',
+    'HEMOVAC TABLET': 'Gynecology, General Medicine',
+    'CALCICAL TABLET': 'Gynecology, Orthopedics, General Medicine',
+    'VEEPROS D3 CAPSULE': 'Gynecology, Orthopedics, General Medicine',
+    'VEEPROS SACHET': 'Gynecology, Orthopedics, General Medicine',
+    'VEEPROS D3 NANOSHOTS': 'Gynecology, Orthopedics, Pediatrics',
+    'ALKATAGE 200 ml': 'Gynecology, General Medicine, Urology',
+    'PNCROS 40': 'General Medicine, Gastroenterology',
+    'PNCROS DRS CAPSULE': 'General Medicine, Gastroenterology, Gynecology',
+    'BENZYLAC TABLET': 'General Medicine, ENT',
+    'BENZYLAC SYRUP': 'Pediatrics, General Medicine, ENT',
+    'BIOFIT PLUS M': 'General Medicine',
+    'BRENZ POWDER': 'General Medicine, Pediatrics',
+    'MONTECROS L': 'ENT, General Medicine, Pediatrics',
+    'BIOSPORE SACHET': 'Pediatrics, General Medicine, Gastroenterology, Gynecology',
+    'BIOSPORE TABLET': 'General Medicine, Gastroenterology',
+    'BIOSPORE 4 SACHET': 'Pediatrics, General Medicine, Gastroenterology',
+    'BIOSPORE 4 TABLET': 'General Medicine, Gastroenterology',
+    'RINOVAC DROP': 'Pediatrics, ENT',
+    'RINOVAC SUSPENSION': 'Pediatrics, ENT, General Medicine',
+    'RINOVAC TABLET': 'ENT, General Medicine',
+  };
+
   let pIndex = 1;
   for (const p of biocrosProducts) {
     await prisma.product.create({
@@ -394,6 +421,7 @@ export async function runBiocrosSeed() {
         code: p.code,
         name: p.name,
         category: p.category,
+        speciality: productSpecialtyMap[p.name] || 'General Medicine',
         unit: p.packing.toString(),
         unitsInPackage: p.units,
         mrp: p.mrp,

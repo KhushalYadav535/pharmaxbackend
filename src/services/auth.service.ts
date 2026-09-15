@@ -40,6 +40,7 @@ export const authService = {
       });
     }
 
+
     if (!user || !user.isActive || user.deletedAt) {
       throw new Error('Invalid credentials');
     }

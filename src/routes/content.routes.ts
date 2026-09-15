@@ -16,7 +16,13 @@ router.get('/', async (req, res) => {
     const { search, type, campaignId } = req.query;
     const where: any = { isActive: true, isDisabled: false };
     if (search) where.title = { contains: search as string, mode: 'insensitive' };
-    if (type) where.contentType = type;
+    if (type) {
+      if (type === 'PRESENTATION') {
+        where.contentType = { in: ['PRESENTATION', 'IMAGE'] };
+      } else {
+        where.contentType = type;
+      }
+    }
     if (campaignId) where.campaignId = campaignId;
 
     const contents = await prisma.content.findMany({
@@ -29,6 +35,121 @@ router.get('/', async (req, res) => {
     });
     res.json({ success: true, data: contents });
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ── Dynamic Detailing Categories & Product Mapping Endpoints ────────────────
+
+// List all active Detailing Categories
+router.get('/categories', async (req, res) => {
+  try {
+    const categories: any = await prisma.$queryRawUnsafe(`
+      SELECT id, name, code, description, "productNames", "doctorKeywords", color, "isActive", "createdAt", "updatedAt"
+      FROM detailing_categories
+      WHERE "isActive" = true
+      ORDER BY name ASC
+    `);
+    res.json({ success: true, data: categories });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Create new Detailing Category
+router.post('/categories', async (req, res) => {
+  try {
+    const { name, code, description, productNames = [], doctorKeywords = [], color = '#059669' } = req.body;
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Category name is required' });
+    }
+
+    const { v4: uuidv4 } = require('uuid');
+    const id = uuidv4();
+    const generatedCode = (code || name).toUpperCase().replace(/[^A-Z0-9]/g, '_');
+
+    // Generate doctorKeywords from name if empty
+    const keywords = doctorKeywords.length > 0
+      ? doctorKeywords
+      : [name.toLowerCase(), ...name.toLowerCase().split(/\s+/)].filter((w: string) => w.length > 2);
+
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO detailing_categories (id, name, code, description, "productNames", "doctorKeywords", color, "isActive", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())`,
+      id,
+      name.trim(),
+      generatedCode,
+      description || null,
+      productNames,
+      keywords,
+      color
+    );
+
+    const created: any = await prisma.$queryRawUnsafe(
+      `SELECT * FROM detailing_categories WHERE id = $1`,
+      id
+    );
+
+    res.status(201).json({ success: true, data: created[0] });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Update Detailing Category / Product Mappings
+router.put('/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, productNames, doctorKeywords, color } = req.body;
+
+    const existing: any = await prisma.$queryRawUnsafe(
+      `SELECT * FROM detailing_categories WHERE id = $1`,
+      id
+    );
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Category not found' });
+    }
+
+    const current = existing[0];
+    const newName = name !== undefined ? name.trim() : current.name;
+    const newDesc = description !== undefined ? description : current.description;
+    const newProds = productNames !== undefined ? productNames : current.productNames;
+    const newKeywords = doctorKeywords !== undefined ? doctorKeywords : current.doctorKeywords;
+    const newColor = color !== undefined ? color : current.color;
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE detailing_categories 
+       SET name = $1, description = $2, "productNames" = $3, "doctorKeywords" = $4, color = $5, "updatedAt" = NOW()
+       WHERE id = $6`,
+      newName,
+      newDesc,
+      newProds,
+      newKeywords,
+      newColor,
+      id
+    );
+
+    const updated: any = await prisma.$queryRawUnsafe(
+      `SELECT * FROM detailing_categories WHERE id = $1`,
+      id
+    );
+
+    res.json({ success: true, data: updated[0] });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Delete (deactivate) Detailing Category
+router.delete('/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.$executeRawUnsafe(
+      `UPDATE detailing_categories SET "isActive" = false, "updatedAt" = NOW() WHERE id = $1`,
+      id
+    );
+    res.json({ success: true, message: 'Category deleted' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
 });
 
 // Single content (logs view)

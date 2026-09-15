@@ -37,6 +37,10 @@ export const doctorController = {
 
   async create(req: Request, res: Response) {
     try {
+      if (req.user && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user.role)) {
+        return res.status(403).json({ success: false, message: 'Access denied: Only administrators can add new doctors.' });
+      }
+
       const { productIds, ...bodyData } = req.body;
       const data: any = { ...bodyData };
       
@@ -67,6 +71,16 @@ export const doctorController = {
     try {
       const { productIds, ...updateData } = req.body;
       const data: any = { ...updateData };
+
+      // MR cannot modify doctor specialty or category assignment (Admin only)
+      if (req.user && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user.role)) {
+        if (data.specialty !== undefined || data.category !== undefined) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied: Only administrators can assign or modify doctor specialties/categories.'
+          });
+        }
+      }
 
       if (productIds) {
         data.productsSelected = {
