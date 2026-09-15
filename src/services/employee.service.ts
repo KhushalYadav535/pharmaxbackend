@@ -97,7 +97,89 @@ export const employeeService = {
       prisma.user.count({ where }),
     ]);
 
-    return { employees, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
+    // Batch enrich employees with live doctor coverage & today's field activity
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const empIds = employees.map((e) => e.id);
+
+    const [todayAttendances, todayVisits, monthDoctorVisits] = await Promise.all([
+      prisma.attendance.findMany({
+        where: { userId: { in: empIds }, date: { gte: startOfToday, lte: endOfToday } },
+        select: { userId: true, checkInTime: true, checkOutTime: true },
+      }),
+      prisma.visit.findMany({
+        where: { userId: { in: empIds }, plannedDate: { gte: startOfToday, lte: endOfToday } },
+        select: { userId: true, visitType: true, status: true },
+      }),
+      prisma.visit.findMany({
+        where: { userId: { in: empIds }, plannedDate: { gte: monthStart, lte: monthEnd }, visitType: 'DOCTOR', status: { in: ['COMPLETED', 'REPORTED', 'DETAILING'] } },
+        select: { userId: true, doctorId: true },
+      }),
+    ]);
+
+    // Pre-calculate territory doctor counts
+    const allTerritoryIds = Array.from(
+      new Set(
+        employees.flatMap((e) => [e.hqId, ...(e.territories || []).map((t: any) => t.territoryId || t.territory?.id)]).filter(Boolean)
+      )
+    ) as string[];
+
+    const territoryDoctors = allTerritoryIds.length > 0
+      ? await prisma.doctor.findMany({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            OR: [
+              { territoryId: { in: allTerritoryIds } },
+              { hqId: { in: allTerritoryIds } },
+            ],
+          },
+          select: { id: true, territoryId: true, hqId: true },
+        })
+      : [];
+
+    const enrichedEmployees = employees.map((emp) => {
+      const empTerritoryIds = new Set(
+        [emp.hqId, ...(emp.territories || []).map((t: any) => t.territoryId || t.territory?.id)].filter(Boolean)
+      );
+
+      const assignedDocs = territoryDoctors.filter(
+        (d) => (d.territoryId && empTerritoryIds.has(d.territoryId)) || (d.hqId && empTerritoryIds.has(d.hqId))
+      );
+
+      const uniqueVisitedDocs = new Set(
+        monthDoctorVisits.filter((v) => v.userId === emp.id && v.doctorId).map((v) => v.doctorId)
+      );
+
+      const att = todayAttendances.find((a) => a.userId === emp.id);
+      const callsToday = todayVisits.filter((v) => v.userId === emp.id);
+
+      const totalDocs = assignedDocs.length;
+      const visitedDocs = uniqueVisitedDocs.size;
+      const unvisitedDocs = Math.max(0, totalDocs - visitedDocs);
+      const coverageRate = totalDocs > 0 ? Math.round((visitedDocs / totalDocs) * 100) : 0;
+
+      return {
+        ...emp,
+        performanceSummary: {
+          totalAssignedDoctors: totalDocs,
+          visitedDoctorsCount: visitedDocs,
+          unvisitedDoctorsCount: unvisitedDocs,
+          coveragePercent: coverageRate,
+          isCheckedInToday: !!att?.checkInTime,
+          checkInTime: att?.checkInTime || null,
+          callsTodayCount: callsToday.length,
+          doctorCallsToday: callsToday.filter((c) => c.visitType === 'DOCTOR').length,
+          retailerCallsToday: callsToday.filter((c) => c.visitType === 'RETAILER').length,
+        },
+      };
+    });
+
+    return { employees: enrichedEmployees, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
   },
 
   async getById(id: string) {
@@ -105,6 +187,270 @@ export const employeeService = {
       where: { id, deletedAt: null },
       select: EMPLOYEE_SELECT,
     });
+  },
+
+  async getDossier(id: string) {
+    const user = await prisma.user.findUnique({
+      where: { id, deletedAt: null },
+      select: EMPLOYEE_SELECT,
+    });
+    if (!user) return null;
+
+    // 1. Gather all assigned territory IDs
+    const territoryIds = Array.from(
+      new Set(
+        [user.hqId, ...(user.territories || []).map((t: any) => t.territoryId || t.territory?.id)].filter(Boolean)
+      )
+    ) as string[];
+
+    // 2. Fetch all assigned doctors in this employee's territory/headquarter
+    const assignedDoctors = territoryIds.length > 0
+      ? await prisma.doctor.findMany({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            OR: [
+              { territoryId: { in: territoryIds } },
+              { hqId: { in: territoryIds } },
+            ],
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            doctorCode: true,
+            specialty: true,
+            qualification: true,
+            category: true,
+            classification: true,
+            city: true,
+            phone: true,
+            hospital: { select: { id: true, name: true } },
+            area: { select: { id: true, name: true } },
+            hq: { select: { id: true, name: true, code: true } },
+            territory: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: [{ doctorCode: 'asc' }, { lastName: 'asc' }],
+        })
+      : [];
+
+    // 3. Time bounds for this month
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // 4. Fetch all doctor visits completed or reported by this employee this month
+    const visitsThisMonth = await prisma.visit.findMany({
+      where: {
+        userId: id,
+        plannedDate: { gte: monthStart, lte: monthEnd },
+        status: { in: ['COMPLETED', 'REPORTED', 'DETAILING'] },
+      },
+      select: {
+        id: true,
+        visitType: true,
+        status: true,
+        doctorId: true,
+        checkInTime: true,
+        checkOutTime: true,
+        durationMinutes: true,
+        visitFeedback: true,
+        notes: true,
+        productsDiscussed: true,
+        plannedDate: true,
+        doctor: { select: { id: true, firstName: true, lastName: true, specialty: true, doctorCode: true } },
+      },
+      orderBy: { plannedDate: 'desc' },
+    });
+
+    // 5. Build visited vs unvisited sets
+    const visitByDocMap = new Map<string, any>();
+    for (const v of visitsThisMonth) {
+      if (v.doctorId) {
+        if (!visitByDocMap.has(v.doctorId)) {
+          visitByDocMap.set(v.doctorId, {
+            visitCount: 1,
+            lastVisitDate: v.plannedDate || v.checkInTime,
+            lastVisitFeedback: v.visitFeedback,
+            lastVisitDuration: v.durationMinutes,
+            lastVisitProducts: v.productsDiscussed,
+            lastVisitStatus: v.status,
+          });
+        } else {
+          visitByDocMap.get(v.doctorId).visitCount += 1;
+        }
+      }
+    }
+
+    const visitedDoctors: any[] = [];
+    const unvisitedDoctors: any[] = [];
+
+    for (const doc of assignedDoctors) {
+      const vInfo = visitByDocMap.get(doc.id);
+      if (vInfo) {
+        visitedDoctors.push({
+          ...doc,
+          isVisited: true,
+          visitCount: vInfo.visitCount,
+          lastVisitDate: vInfo.lastVisitDate,
+          lastVisitFeedback: vInfo.lastVisitFeedback,
+          lastVisitDuration: vInfo.lastVisitDuration,
+          lastVisitProducts: vInfo.lastVisitProducts,
+          lastVisitStatus: vInfo.lastVisitStatus,
+        });
+      } else {
+        unvisitedDoctors.push({
+          ...doc,
+          isVisited: false,
+          visitCount: 0,
+          lastVisitDate: null,
+          lastVisitFeedback: null,
+          lastVisitDuration: null,
+          lastVisitProducts: [],
+          lastVisitStatus: null,
+        });
+      }
+    }
+
+    // 6. Today's live activity and attendance
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const planMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const [todayAttendance, todayVisits, activeTourPlan, monthlyOrders, monthlyExpenses, recentVisits] = await Promise.all([
+      prisma.attendance.findFirst({
+        where: {
+          userId: id,
+          date: { gte: startOfToday, lte: endOfToday },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.visit.findMany({
+        where: {
+          userId: id,
+          plannedDate: { gte: startOfToday, lte: endOfToday },
+        },
+        select: {
+          id: true,
+          visitType: true,
+          status: true,
+          durationMinutes: true,
+          doctor: { select: { firstName: true, lastName: true, specialty: true } },
+          hospital: { select: { name: true } },
+          retailer: { select: { name: true } },
+        },
+      }),
+      // Tour plan for current month — planMonth is stored as "YYYY-MM" string
+      prisma.tourPlan.findFirst({
+        where: {
+          userId: id,
+          planMonth: planMonthStr,
+        },
+        include: {
+          days: {
+            where: { date: { gte: startOfToday, lte: endOfToday } },
+            select: {
+              id: true,
+              date: true,
+              purpose: true,
+              areaId: true,
+              area: { select: { name: true } },
+            },
+          },
+        },
+      }),
+      prisma.order.findMany({
+        where: {
+          userId: id,
+          createdAt: { gte: monthStart, lte: monthEnd },
+        },
+        include: {
+          retailer: { select: { id: true, name: true, phone: true } },
+          items: {
+            select: {
+              id: true,
+              quantity: true,
+              unitPrice: true,
+              totalPrice: true,
+              product: { select: { name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.expense.findMany({
+        where: {
+          userId: id,
+          createdAt: { gte: monthStart, lte: monthEnd },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.visit.findMany({
+        where: { userId: id },
+        include: {
+          doctor: { select: { firstName: true, lastName: true, doctorCode: true, specialty: true } },
+          hospital: { select: { name: true } },
+          retailer: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+      }),
+    ]);
+
+    const todayCalls = {
+      doctorCalls: todayVisits.filter((v) => v.visitType === 'DOCTOR').length,
+      retailerCalls: todayVisits.filter((v) => v.visitType === 'RETAILER').length,
+      hospitalCalls: todayVisits.filter((v) => v.visitType === 'HOSPITAL').length,
+      totalCalls: todayVisits.length,
+    };
+
+    const totalRevenue = monthlyOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+    const totalExpensesAmount = monthlyExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+    const totalDoctors = assignedDoctors.length;
+    const visitedCount = visitedDoctors.length;
+    const unvisitedCount = unvisitedDoctors.length;
+    const coveragePercent = totalDoctors > 0 ? Math.round((visitedCount / totalDoctors) * 100) : 0;
+
+    return {
+      employee: user,
+      coverage: {
+        totalAssignedDoctors: totalDoctors,
+        visitedDoctorsCount: visitedCount,
+        unvisitedDoctorsCount: unvisitedCount,
+        coveragePercentage: coveragePercent,
+        visitedDoctors,
+        unvisitedDoctors,
+        allAssignedDoctors: [...visitedDoctors, ...unvisitedDoctors],
+      },
+      todayActivity: {
+        attendance: todayAttendance,
+        calls: todayCalls,
+        visits: todayVisits,
+        isCheckedIn: !!todayAttendance?.checkInTime,
+        checkInTime: todayAttendance?.checkInTime || null,
+        checkOutTime: todayAttendance?.checkOutTime || null,
+        latitude: todayAttendance?.checkInLat ?? null,
+        longitude: todayAttendance?.checkInLng ?? null,
+        address: (todayAttendance as any)?.notes ?? null,
+      },
+      tourPlan: {
+        plan: activeTourPlan,
+        todaySchedule: activeTourPlan?.days?.[0] || null,
+      },
+      orders: {
+        totalOrders: monthlyOrders.length,
+        totalRevenue,
+        recentOrders: monthlyOrders,
+      },
+      expenses: {
+        totalAmount: totalExpensesAmount,
+        recentExpenses: monthlyExpenses,
+      },
+      recentVisits,
+    };
   },
 
   async create(data: any) {

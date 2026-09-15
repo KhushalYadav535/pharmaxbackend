@@ -9,10 +9,13 @@ export const doctorController = {
         {
           search: req.query.search as string,
           specialty: req.query.specialty as string,
+          category: req.query.category as string,
           classification: req.query.classification as any,
           territoryId: req.query.territoryId as string,
+          hqId: (req.query.hqId || req.query.headquarterId) as string,
           areaId: req.query.areaId as string,
           hospitalId: req.query.hospitalId as string,
+          approvalStatus: req.query.approvalStatus as any,
           page: req.query.page ? parseInt(req.query.page as string) : 1,
           limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
         },

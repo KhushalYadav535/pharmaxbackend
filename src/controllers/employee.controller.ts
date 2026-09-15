@@ -89,4 +89,13 @@ export const employeeController = {
       res.json({ success: true, message: 'Territory removed' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
+
+  // Full employee dossier: doctor coverage, today's activity, orders, expenses, visits
+  async getDossier(req: Request, res: Response) {
+    try {
+      const dossier = await employeeService.getDossier(req.params['id'] as string);
+      if (!dossier) return res.status(404).json({ success: false, message: 'Employee not found' });
+      res.json({ success: true, data: dossier });
+    } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  },
 };

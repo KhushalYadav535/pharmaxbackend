@@ -12,12 +12,21 @@ const HQ_SELECT = {
   parentId: true,
   createdAt: true,
   updatedAt: true,
-  _count: { select: { employees: true, doctorsHQ: true, retailersHQ: true } },
+  _count: {
+    select: {
+      employees: true,
+      doctorsHQ: true,
+      retailersHQ: true,
+      hospitalsHQ: true,
+      stockists: true,
+      distributors: true,
+    }
+  },
 } as const;
 
 export const headquarterService = {
   async list(filters: any) {
-    const { page = 1, limit = 20, search, state } = filters;
+    const { page = 1, limit = 50, search, state } = filters;
     const p = Number(page), l = Number(limit);
     const where: any = {};
 
@@ -42,11 +51,37 @@ export const headquarterService = {
       prisma.territory.count({ where }),
     ]);
 
-    return { headquarters, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
+    const formattedHqs = headquarters.map((h: any) => ({
+      ...h,
+      _count: {
+        ...h._count,
+        doctors: h._count?.doctorsHQ ?? 0,
+        hospitals: h._count?.hospitalsHQ ?? 0,
+        retailers: h._count?.retailersHQ ?? 0,
+        employees: h._count?.employees ?? 0,
+        stockists: h._count?.stockists ?? 0,
+        distributors: h._count?.distributors ?? 0,
+      }
+    }));
+
+    return { headquarters: formattedHqs, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
   },
 
   async getById(id: string) {
-    return prisma.territory.findUnique({ where: { id }, select: HQ_SELECT });
+    const h = await prisma.territory.findUnique({ where: { id }, select: HQ_SELECT });
+    if (!h) return null;
+    return {
+      ...h,
+      _count: {
+        ...h._count,
+        doctors: (h as any)._count?.doctorsHQ ?? 0,
+        hospitals: (h as any)._count?.hospitalsHQ ?? 0,
+        retailers: (h as any)._count?.retailersHQ ?? 0,
+        employees: (h as any)._count?.employees ?? 0,
+        stockists: (h as any)._count?.stockists ?? 0,
+        distributors: (h as any)._count?.distributors ?? 0,
+      }
+    };
   },
 
   async create(data: {

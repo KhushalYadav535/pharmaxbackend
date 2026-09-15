@@ -8,6 +8,7 @@ router.use(authenticate);
 
 // List & Get
 router.get('/', employeeController.list);
+router.get('/:id/dossier', employeeController.getDossier);  // Full MR dossier for admin
 router.get('/:id', employeeController.getById);
 
 // Create & Update (managers/admin only)

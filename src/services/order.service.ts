@@ -7,7 +7,17 @@ export const orderService = {
     
     const where: any = {};
     if (userId) where.userId = userId;
-    if (status) where.status = status;
+    if (status) {
+      if (status === 'PENDING') {
+        where.status = 'SUBMITTED';
+      } else if (status === 'APPROVED' || status === 'CONFIRMED') {
+        where.status = 'PROCESSING';
+      } else if (status === 'SHIPPED') {
+        where.status = 'DISPATCHED';
+      } else {
+        where.status = status;
+      }
+    }
     if (retailerId) where.retailerId = retailerId;
     if (distributorId) where.distributorId = distributorId;
 
@@ -100,8 +110,17 @@ export const orderService = {
   },
 
   async updateStatus(id: string, status: any) {
+    let targetStatus = status;
+    if (status === 'APPROVED' || status === 'CONFIRMED') {
+      targetStatus = 'PROCESSING';
+    } else if (status === 'SHIPPED') {
+      targetStatus = 'DISPATCHED';
+    } else if (status === 'PENDING') {
+      targetStatus = 'SUBMITTED';
+    }
+
     const validStatuses = ['DRAFT', 'SUBMITTED', 'PROCESSING', 'DISPATCHED', 'DELIVERED', 'CANCELLED'];
-    if (!validStatuses.includes(status)) {
+    if (!validStatuses.includes(targetStatus)) {
       throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
     
@@ -110,8 +129,8 @@ export const orderService = {
     return prisma.order.update({
       where: { id },
       data: { 
-        status,
-        deliveredAt: status === 'DELIVERED' ? new Date() : undefined
+        status: targetStatus,
+        deliveredAt: targetStatus === 'DELIVERED' ? new Date() : undefined
       }
     });
   },

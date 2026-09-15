@@ -4,11 +4,13 @@ import { Prisma, DoctorClassification } from '@prisma/client';
 export interface DoctorFilters {
   search?: string;
   specialty?: string;
+  category?: string;
   classification?: DoctorClassification;
   territoryId?: string;
+  hqId?: string;
   areaId?: string;
   hospitalId?: string;
-  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvalStatus?: 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
   page?: number;
   limit?: number;
 }
@@ -16,27 +18,45 @@ export interface DoctorFilters {
 export const doctorService = {
   async list(filters: DoctorFilters, userId: string, userRole: string) {
     const {
-      search, specialty, classification, territoryId, areaId, hospitalId, approvalStatus,
+      search, specialty, category, classification, territoryId, hqId, areaId, hospitalId, approvalStatus,
       page = 1, limit = 20,
     } = filters;
 
-    const where: Prisma.DoctorWhereInput = {
-      deletedAt: null,
-      isActive: true,
-      approvalStatus: approvalStatus || 'APPROVED',
-      ...(search && {
+    const andConditions: Prisma.DoctorWhereInput[] = [
+      { deletedAt: null, isActive: true },
+    ];
+
+    if (approvalStatus && approvalStatus !== 'ALL') {
+      andConditions.push({ approvalStatus: approvalStatus as any });
+    } else if (!approvalStatus) {
+      andConditions.push({ approvalStatus: 'APPROVED' });
+    }
+
+    if (search) {
+      andConditions.push({
         OR: [
           { firstName: { contains: search, mode: 'insensitive' } },
           { lastName: { contains: search, mode: 'insensitive' } },
           { specialty: { contains: search, mode: 'insensitive' } },
+          { doctorCode: { contains: search, mode: 'insensitive' } },
+          { category: { contains: search, mode: 'insensitive' } },
+          { qualification: { contains: search, mode: 'insensitive' } },
+          { city: { contains: search, mode: 'insensitive' } },
         ],
-      }),
-      ...(specialty && { specialty }),
-      ...(classification && { classification }),
-      ...(territoryId && { territoryId }),
-      ...(areaId && { areaId }),
-      ...(hospitalId && { hospitalId }),
-    };
+      });
+    }
+
+    if (specialty) andConditions.push({ specialty });
+    if (category) andConditions.push({ category });
+    if (classification) andConditions.push({ classification });
+    if (territoryId) andConditions.push({ territoryId });
+    if (hqId) {
+      andConditions.push({
+        OR: [{ hqId }, { territoryId: hqId }],
+      });
+    }
+    if (areaId) andConditions.push({ areaId });
+    if (hospitalId) andConditions.push({ hospitalId });
 
     // MR/Rep level: only their territory
     if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {
@@ -45,8 +65,10 @@ export const doctorService = {
         select: { territoryId: true },
       });
       const tIds = userTerritories.map((ut) => ut.territoryId);
-      where.territoryId = { in: tIds };
+      andConditions.push({ territoryId: { in: tIds } });
     }
+
+    const where: Prisma.DoctorWhereInput = { AND: andConditions };
 
     const [doctors, total] = await Promise.all([
       prisma.doctor.findMany({
@@ -54,11 +76,13 @@ export const doctorService = {
         include: {
           hospital: { select: { id: true, name: true } },
           territory: { select: { id: true, name: true } },
+          hq: { select: { id: true, name: true } },
+          area: { select: { id: true, name: true } },
           _count: { select: { visits: true } },
         },
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { lastName: 'asc' },
+        orderBy: [{ doctorCode: 'asc' }, { lastName: 'asc' }],
       }),
       prisma.doctor.count({ where }),
     ]);
@@ -72,6 +96,9 @@ export const doctorService = {
       include: {
         hospital: true,
         territory: true,
+        hq: true,
+        area: true,
+        retailer: true,
         tags: true,
         visits: {
           orderBy: { checkInTime: 'desc' },

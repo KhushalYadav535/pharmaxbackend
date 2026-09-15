@@ -133,14 +133,29 @@ router.get('/summary', requireManager, async (req, res) => {
   try {
     const userFilter = await getManagerFilter(req);
 
-    const [pendingVisits, pendingExpenses, pendingLeaves, pendingTourPlans] = await Promise.all([
+    const [pendingVisits, pendingExpenses, pendingLeaves, pendingTourPlans, pendingOrders, pendingEntitiesCount] = await Promise.all([
       prisma.visit.count({ where: { ...userFilter, status: 'COMPLETED', approvalStatus: 'PENDING' } }),
       prisma.expense.count({ where: { ...userFilter, approvalStatus: 'PENDING' } }),
       prisma.leave.count({ where: { ...userFilter, approvalStatus: 'PENDING' } }),
       prisma.tourPlan.count({ where: { ...userFilter, approvalStatus: 'PENDING', planDate: { not: null } } }),
+      prisma.order.count({ where: { status: 'SUBMITTED' } }),
+      prisma.doctor.count({ where: { approvalStatus: 'PENDING', isActive: true } }),
     ]);
 
-    res.json({ success: true, data: { pendingVisits, pendingExpenses, pendingLeaves, pendingTourPlans, total: pendingVisits + pendingExpenses + pendingLeaves + pendingTourPlans } });
+    const total = pendingVisits + pendingExpenses + pendingLeaves + pendingTourPlans + pendingOrders + pendingEntitiesCount;
+
+    res.json({
+      success: true,
+      data: {
+        pendingVisits,
+        pendingExpenses,
+        pendingLeaves,
+        pendingTourPlans,
+        pendingOrders,
+        pendingEntities: pendingEntitiesCount,
+        total,
+      },
+    });
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
@@ -148,19 +163,74 @@ router.get('/summary', requireManager, async (req, res) => {
 router.get('/pending-entities', async (req, res) => {
   try {
     const [doctors, hospitals, stockists, retailers, distributors] = await Promise.all([
-      prisma.doctor.findMany({ where: { approvalStatus: 'PENDING', isActive: true }, select: { id: true, firstName: true, lastName: true, city: true, createdAt: true } }),
-      prisma.hospital.findMany({ where: { approvalStatus: 'PENDING', isActive: true }, select: { id: true, name: true, city: true, createdAt: true } }),
-      prisma.stockist.findMany({ where: { approvalStatus: 'PENDING', isActive: true }, select: { id: true, name: true, city: true, createdAt: true } }),
-      prisma.retailer.findMany({ where: { approvalStatus: 'PENDING', isActive: true }, select: { id: true, name: true, city: true, createdAt: true } }),
-      prisma.distributor.findMany({ where: { approvalStatus: 'PENDING', isActive: true }, select: { id: true, name: true, city: true, createdAt: true } }),
+      prisma.doctor.findMany({
+        where: { approvalStatus: 'PENDING', isActive: true },
+        select: { id: true, firstName: true, lastName: true, city: true, createdAt: true, doctorCode: true, category: true, specialty: true, qualification: true, hq: { select: { name: true } } },
+      }),
+      prisma.hospital.findMany({
+        where: { approvalStatus: 'PENDING', isActive: true },
+        select: { id: true, name: true, city: true, createdAt: true, hospitalCode: true, category: true },
+      }),
+      prisma.stockist.findMany({
+        where: { approvalStatus: 'PENDING', isActive: true },
+        select: { id: true, name: true, city: true, createdAt: true, stockistCode: true },
+      }),
+      prisma.retailer.findMany({
+        where: { approvalStatus: 'PENDING', isActive: true },
+        select: { id: true, name: true, city: true, createdAt: true, retailerCode: true },
+      }),
+      prisma.distributor.findMany({
+        where: { approvalStatus: 'PENDING', isActive: true },
+        select: { id: true, name: true, city: true, createdAt: true },
+      }),
     ]);
 
     const entities = [
-      ...doctors.map(d => ({ id: d.id, type: 'Doctor', name: `Dr. ${d.firstName} ${d.lastName}`, city: d.city, submittedAt: d.createdAt })),
-      ...hospitals.map(h => ({ id: h.id, type: 'Hospital', name: h.name, city: h.city, submittedAt: h.createdAt })),
-      ...stockists.map(s => ({ id: s.id, type: 'Stockist', name: s.name, city: s.city, submittedAt: s.createdAt })),
-      ...retailers.map(r => ({ id: r.id, type: 'Retailer', name: r.name, city: r.city, submittedAt: r.createdAt })),
-      ...distributors.map(d => ({ id: d.id, type: 'Distributor', name: d.name, city: d.city, submittedAt: d.createdAt })),
+      ...doctors.map(d => ({
+        id: d.id,
+        type: 'Doctor',
+        name: `Dr. ${d.firstName} ${d.lastName}`,
+        code: d.doctorCode,
+        category: d.category,
+        specialty: d.specialty,
+        qualification: d.qualification,
+        headquarter: d.hq?.name,
+        city: d.city,
+        submittedAt: d.createdAt,
+      })),
+      ...hospitals.map(h => ({
+        id: h.id,
+        type: 'Hospital',
+        name: h.name,
+        code: h.hospitalCode,
+        category: h.category,
+        city: h.city,
+        submittedAt: h.createdAt,
+      })),
+      ...stockists.map(s => ({
+        id: s.id,
+        type: 'Stockist',
+        name: s.name,
+        code: s.stockistCode,
+        city: s.city,
+        submittedAt: s.createdAt,
+      })),
+      ...retailers.map(r => ({
+        id: r.id,
+        type: 'Retailer',
+        name: r.name,
+        code: r.retailerCode,
+        city: r.city,
+        submittedAt: r.createdAt,
+      })),
+      ...distributors.map(d => ({
+        id: d.id,
+        type: 'Distributor',
+        name: d.name,
+        code: null,
+        city: d.city,
+        submittedAt: d.createdAt,
+      })),
     ].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
     res.json({ success: true, data: entities });
