@@ -26,10 +26,15 @@ export const employeeController = {
       const item = await employeeService.create(req.body);
       res.status(201).json({ success: true, data: item });
     } catch (err: any) {
+      console.error('Employee creation error:', err);
       if (err.code === 'P2002') {
-        return res.status(400).json({ success: false, message: 'Email already in use' });
+        const target = err.meta?.target ? ` (${Array.isArray(err.meta.target) ? err.meta.target.join(', ') : err.meta.target})` : '';
+        return res.status(400).json({ success: false, message: `Unique constraint violated${target}. Value already in use.` });
       }
-      res.status(400).json({ success: false, message: err.message });
+      if (err.code === 'P2003') {
+        return res.status(400).json({ success: false, message: 'Invalid reference: Please verify Manager or Territory selection.' });
+      }
+      res.status(400).json({ success: false, message: err.message || 'Failed to save employee' });
     }
   },
 

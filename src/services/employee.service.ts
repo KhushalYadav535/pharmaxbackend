@@ -52,17 +52,66 @@ const EMPLOYEE_SELECT = {
 
 // Fields that are date strings and need conversion
 const DATE_FIELDS = ['dateOfJoining', 'dateOfBirth', 'marriageAnniversary'] as const;
+const VALID_GENDERS = ['MALE', 'FEMALE', 'OTHER'];
+const VALID_MARITAL_STATUSES = ['MARRIED', 'UNMARRIED', 'SEPARATED', 'DIVORCED', 'WIDOWED'];
 
 function parseEmployeeData(data: any) {
   const parsed: any = { ...data };
+
+  // Parse and sanitize Date fields
   for (const f of DATE_FIELDS) {
     if (parsed[f] !== undefined) {
-      parsed[f] = parsed[f] ? new Date(parsed[f]) : null;
+      if (parsed[f] && typeof parsed[f] === 'string' && parsed[f].trim()) {
+        const d = new Date(parsed[f]);
+        parsed[f] = !isNaN(d.getTime()) ? d : null;
+      } else if (parsed[f] instanceof Date && !isNaN(parsed[f].getTime())) {
+        // already valid Date
+      } else {
+        parsed[f] = null;
+      }
     }
   }
+
+  // Dependents (must be number or null)
   if (parsed.dependents !== undefined) {
-    parsed.dependents = parsed.dependents !== '' && parsed.dependents !== null ? Number(parsed.dependents) : null;
+    const num = Number(parsed.dependents);
+    parsed.dependents = parsed.dependents !== '' && parsed.dependents !== null && !isNaN(num) ? num : null;
   }
+
+  // Foreign keys: managerId & hqId must be valid non-empty string or null
+  if (parsed.managerId !== undefined) {
+    parsed.managerId = typeof parsed.managerId === 'string' && parsed.managerId.trim() ? parsed.managerId.trim() : null;
+  }
+  if (parsed.hqId !== undefined) {
+    parsed.hqId = typeof parsed.hqId === 'string' && parsed.hqId.trim() ? parsed.hqId.trim() : null;
+  }
+
+  // Gender enum validation
+  if (parsed.gender !== undefined) {
+    const g = typeof parsed.gender === 'string' ? parsed.gender.toUpperCase().trim() : '';
+    parsed.gender = VALID_GENDERS.includes(g) ? g : null;
+  }
+
+  // MaritalStatus enum validation & mapping
+  if (parsed.maritalStatus !== undefined) {
+    let m = typeof parsed.maritalStatus === 'string' ? parsed.maritalStatus.toUpperCase().trim() : '';
+    if (m === 'SINGLE') m = 'UNMARRIED';
+    parsed.maritalStatus = VALID_MARITAL_STATUSES.includes(m) ? m : null;
+  }
+
+  // Optional string fields: clean empty string "" to null or trim
+  const optionalTextFields = [
+    'middleName', 'phone', 'whatsappNumber', 'qualification', 'address1', 'address2',
+    'city', 'district', 'state', 'pin', 'facebook', 'instagram', 'twitter', 'linkedin',
+    'spouseName', 'aadharNumber', 'panNumber', 'grade', 'designation', 'department',
+    'profilePhoto', 'prefix', 'bloodGroup'
+  ];
+  for (const field of optionalTextFields) {
+    if (parsed[field] !== undefined) {
+      parsed[field] = typeof parsed[field] === 'string' && parsed[field].trim() ? parsed[field].trim() : null;
+    }
+  }
+
   return parsed;
 }
 
@@ -457,11 +506,19 @@ export const employeeService = {
     const { password, hqIds, ...rest } = data;
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Auto-generate employee ID
+    // Auto-generate employee ID (guaranteed collision-free)
     const count = await prisma.user.count({ where: { deletedAt: null } });
-    const employeeId = `EMP${String(count + 1).padStart(5, '0')}`;
+    let nextNum = count + 1;
+    let employeeId = `EMP${String(nextNum).padStart(5, '0')}`;
+    while (await prisma.user.findUnique({ where: { employeeId } })) {
+      nextNum++;
+      employeeId = `EMP${String(nextNum).padStart(5, '0')}`;
+    }
 
     const parsed = parseEmployeeData(rest);
+    const validTerritoryIds = Array.isArray(hqIds)
+      ? hqIds.filter((tid: any) => typeof tid === 'string' && tid.trim())
+      : [];
 
     return prisma.user.create({
       data: {
@@ -471,8 +528,8 @@ export const employeeService = {
         role: parsed.role as any,
         gender: parsed.gender as any,
         maritalStatus: parsed.maritalStatus as any,
-        territories: hqIds && Array.isArray(hqIds) ? {
-          create: hqIds.map((tid: string, index: number) => ({
+        territories: validTerritoryIds.length > 0 ? {
+          create: validTerritoryIds.map((tid: string, index: number) => ({
             territoryId: tid,
             isPrimary: index === 0,
           }))
@@ -487,10 +544,11 @@ export const employeeService = {
     
     // Manage territories if hqIds provided
     if (hqIds && Array.isArray(hqIds)) {
+      const validTerritoryIds = hqIds.filter((tid: any) => typeof tid === 'string' && tid.trim());
       await prisma.userTerritory.deleteMany({ where: { userId: id } });
-      if (hqIds.length > 0) {
+      if (validTerritoryIds.length > 0) {
         await prisma.userTerritory.createMany({
-          data: hqIds.map((tid: string, index: number) => ({
+          data: validTerritoryIds.map((tid: string, index: number) => ({
             userId: id,
             territoryId: tid,
             isPrimary: index === 0,
@@ -503,9 +561,9 @@ export const employeeService = {
       where: { id },
       data: {
         ...parsed,
-        role: parsed.role as any,
-        gender: parsed.gender as any,
-        maritalStatus: parsed.maritalStatus as any,
+        role: parsed.role ? (parsed.role as any) : undefined,
+        gender: parsed.gender !== undefined ? (parsed.gender as any) : undefined,
+        maritalStatus: parsed.maritalStatus !== undefined ? (parsed.maritalStatus as any) : undefined,
       },
       select: EMPLOYEE_SELECT,
     });
