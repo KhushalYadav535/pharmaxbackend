@@ -11,7 +11,7 @@ async function check() {
   );
   console.log(`✅ Fetched ${rows.length} detailing categories from PostgreSQL:`);
   rows.forEach(r => {
-    console.log(`   - ${r.name} [${r.code}]: ${r.productNames ? r.productNames.length : 0} products mapped`);
+    console.log(`   - [${r.id}] ${r.name} [${r.code}]: ${r.productNames ? r.productNames.length : 0} products mapped`);
   });
 }
 

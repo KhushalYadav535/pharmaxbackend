@@ -2,12 +2,17 @@ import 'dotenv/config';
 import app from './app';
 import { env } from './config/env';
 import prisma from './config/database';
+import { ensureDetailingCategoriesTable } from './routes/content.routes';
 
 async function main() {
   try {
     // Test DB connection
     await prisma.$connect();
     console.log('✅ Database connected');
+
+    // Ensure detailing categories table exists and is seeded
+    await ensureDetailingCategoriesTable();
+    console.log('✅ Detailing categories table initialized');
 
     app.listen(env.PORT, () => {
       console.log(`🚀 Pharmax API running on http://localhost:${env.PORT}`);

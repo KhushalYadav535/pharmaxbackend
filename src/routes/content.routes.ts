@@ -39,9 +39,204 @@ router.get('/', async (req, res) => {
 
 // ── Dynamic Detailing Categories & Product Mapping Endpoints ────────────────
 
+const DEFAULT_INITIAL_CATEGORIES = [
+  {
+    id: 'cat-gyno',
+    name: 'Gynecology & Obstetrics',
+    code: 'GYNECOLOGY',
+    description: 'Maternal health, reproductive support, prenatal care, and gynecological formulations.',
+    productNames: [
+      'ARGICROS PINK SACHET',
+      'ARGICROS BLUE SACHET',
+      'BIOFIT PLUS F',
+      'HEMOVAC SYRUP',
+      'HEMOVAC TABLET',
+      'CALCICAL TABLET',
+      'VEEPROS D3 CAPSULE',
+      'VEEPROS SACHET',
+      'VEEPROS D3 NANOSHOTS',
+      'ALKATAGE 200 ml',
+      'PNCROS DRS CAPSULE',
+      'BIOSPORE SACHET'
+    ],
+    doctorKeywords: ['gyno', 'gynecology', 'gynaecology', 'obstetrics', 'obg', 'ob-gyn', 'consultant gynecologist', 'women health'],
+    color: '#EC4899',
+  },
+  {
+    id: 'cat-genmed',
+    name: 'General Medicine',
+    code: 'GENERAL_MEDICINE',
+    description: 'Internal medicine, adult general healthcare, anti-infectives, and chronic therapeutics.',
+    productNames: [
+      'PNCROS 40',
+      'PNCROS DRS CAPSULE',
+      'BENZYLAC TABLET',
+      'BENZYLAC SYRUP',
+      'BIOFIT PLUS M',
+      'BIOFIT PLUS F',
+      'BIOSPORE TABLET',
+      'BIOSPORE SACHET',
+      'BIOSPORE 4 TABLET',
+      'BIOSPORE 4 SACHET',
+      'BRENZ POWDER',
+      'CALCICAL TABLET',
+      'HEMOVAC SYRUP',
+      'HEMOVAC TABLET',
+      'MONTECROS L',
+      'RINOVAC TABLET',
+      'RINOVAC SUSPENSION',
+      'VEEPROS D3 CAPSULE',
+      'VEEPROS D3 NANOSHOTS',
+      'ALKATAGE 200 ml'
+    ],
+    doctorKeywords: ['general medicine', 'internal medicine', 'general physician', 'consultant physician', 'consultant specialist', 'general practitioner', 'physician', 'family medicine'],
+    color: '#2563EB',
+  },
+  {
+    id: 'cat-peds',
+    name: 'Pediatrics',
+    code: 'PEDIATRICS',
+    description: 'Child health, pediatric antibiotics, drops, respiratory, and pediatric suspensions.',
+    productNames: [
+      'RINOVAC DROP',
+      'RINOVAC SUSPENSION',
+      'BENZYLAC SYRUP',
+      'BIOSPORE SACHET',
+      'BIOSPORE 4 SACHET',
+      'BRENZ POWDER',
+      'MONTECROS L',
+      'VEEPROS D3 NANOSHOTS',
+      'HEMOVAC SYRUP'
+    ],
+    doctorKeywords: ['pediatrics', 'pediatrician', 'paediatrics', 'paediatrician', 'child specialist', 'child'],
+    color: '#F59E0B',
+  },
+  {
+    id: 'cat-gastro',
+    name: 'Gastroenterology',
+    code: 'GASTROENTEROLOGY',
+    description: 'Digestive tract health, probiotics, acid reflux, and enteric stabilization.',
+    productNames: [
+      'BIOSPORE SACHET',
+      'BIOSPORE TABLET',
+      'BIOSPORE 4 SACHET',
+      'BIOSPORE 4 TABLET',
+      'PNCROS 40',
+      'PNCROS DRS CAPSULE',
+      'ALKATAGE 200 ml',
+      'BRENZ POWDER'
+    ],
+    doctorKeywords: ['gastroenterology', 'gastro', 'gastroenterologist', 'hepatology'],
+    color: '#9333EA',
+  },
+  {
+    id: 'cat-ent',
+    name: 'ENT & Respiratory',
+    code: 'ENT',
+    description: 'Ear, nose, throat, anti-allergic, and respiratory therapies.',
+    productNames: [
+      'MONTECROS L',
+      'RINOVAC TABLET',
+      'RINOVAC SUSPENSION',
+      'RINOVAC DROP',
+      'BENZYLAC TABLET',
+      'BENZYLAC SYRUP'
+    ],
+    doctorKeywords: ['ent', 'ent specialist', 'otolaryngology', 'otorhinolaryngology', 'pulmonology', 'chest physician'],
+    color: '#059669',
+  },
+  {
+    id: 'cat-ortho',
+    name: 'Orthopedics',
+    code: 'ORTHOPEDICS',
+    description: 'Bone density, calcium metabolism, joint health, and high-dose vitamin D3.',
+    productNames: [
+      'CALCICAL TABLET',
+      'VEEPROS D3 CAPSULE',
+      'VEEPROS SACHET',
+      'VEEPROS D3 NANOSHOTS',
+      'BENZYLAC TABLET'
+    ],
+    doctorKeywords: ['orthopedics', 'orthopaedics', 'orthopedic surgeon', 'ortho', 'bone', 'joint', 'general surgery', 'consultant surgeon'],
+    color: '#EA580C',
+  },
+  {
+    id: 'cat-cardio',
+    name: 'Cardiology',
+    code: 'CARDIOLOGY',
+    description: 'Cardiovascular therapeutics, arterial wellness, and metabolic support.',
+    productNames: [
+      'ARGICROS PINK SACHET',
+      'BIOFIT PLUS M',
+      'VEEPROS D3 CAPSULE'
+    ],
+    doctorKeywords: ['cardiology', 'cardiologist', 'heart', 'cardiac'],
+    color: '#E11D48',
+  },
+  {
+    id: 'cat-derma',
+    name: 'Dermatology',
+    code: 'DERMATOLOGY',
+    description: 'Skin health, anti-fungal, micro-nutritional, and restorative formulations.',
+    productNames: [
+      'BENZYLAC TABLET',
+      'BIOFIT PLUS F',
+      'VEEPROS D3 CAPSULE',
+      'BIOSPORE TABLET'
+    ],
+    doctorKeywords: ['dermatology', 'dermatologist', 'skin', 'cosmetologist'],
+    color: '#D97706',
+  }
+];
+
+let isDetailingTableReady = false;
+
+export async function ensureDetailingCategoriesTable() {
+  if (isDetailingTableReady) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS detailing_categories (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        code VARCHAR(50) NOT NULL,
+        description TEXT,
+        "productNames" TEXT[] DEFAULT '{}',
+        "doctorKeywords" TEXT[] DEFAULT '{}',
+        color VARCHAR(30) DEFAULT '#059669',
+        "isActive" BOOLEAN DEFAULT TRUE,
+        "createdAt" TIMESTAMP DEFAULT NOW(),
+        "updatedAt" TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const countRes: any = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int as count FROM detailing_categories`);
+    const count = countRes?.[0]?.count ? parseInt(countRes[0].count, 10) : 0;
+    if (count === 0) {
+      for (const cat of DEFAULT_INITIAL_CATEGORIES) {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO detailing_categories (id, name, code, description, "productNames", "doctorKeywords", color, "isActive", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
+           ON CONFLICT (name) DO NOTHING`,
+          cat.id,
+          cat.name,
+          cat.code,
+          cat.description,
+          cat.productNames,
+          cat.doctorKeywords,
+          cat.color
+        );
+      }
+    }
+    isDetailingTableReady = true;
+  } catch (err) {
+    console.error('Failed to ensure detailing_categories table:', err);
+  }
+}
+
 // List all active Detailing Categories
 router.get('/categories', async (req, res) => {
   try {
+    await ensureDetailingCategoriesTable();
     const categories: any = await prisma.$queryRawUnsafe(`
       SELECT id, name, code, description, "productNames", "doctorKeywords", color, "isActive", "createdAt", "updatedAt"
       FROM detailing_categories
@@ -57,6 +252,7 @@ router.get('/categories', async (req, res) => {
 // Create new Detailing Category
 router.post('/categories', async (req, res) => {
   try {
+    await ensureDetailingCategoriesTable();
     const { name, code, description, productNames = [], doctorKeywords = [], color = '#059669' } = req.body;
     if (!name) {
       return res.status(400).json({ success: false, message: 'Category name is required' });
@@ -73,7 +269,9 @@ router.post('/categories', async (req, res) => {
 
     await prisma.$executeRawUnsafe(
       `INSERT INTO detailing_categories (id, name, code, description, "productNames", "doctorKeywords", color, "isActive", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
+       ON CONFLICT (name) DO UPDATE
+       SET "productNames" = EXCLUDED."productNames", description = EXCLUDED.description, color = EXCLUDED.color, "updatedAt" = NOW()`,
       id,
       name.trim(),
       generatedCode,
@@ -97,42 +295,93 @@ router.post('/categories', async (req, res) => {
 // Update Detailing Category / Product Mappings
 router.put('/categories/:id', async (req, res) => {
   try {
+    await ensureDetailingCategoriesTable();
     const { id } = req.params;
     const { name, description, productNames, doctorKeywords, color } = req.body;
 
+    const fallbackCodeMap: Record<string, string> = {
+      'cat-gyno': 'GYNECOLOGY',
+      'cat-genmed': 'GENERAL_MEDICINE',
+      'cat-peds': 'PEDIATRICS',
+      'cat-gastro': 'GASTROENTEROLOGY',
+      'cat-ent': 'ENT',
+      'cat-ortho': 'ORTHOPEDICS',
+      'cat-cardio': 'CARDIOLOGY',
+      'cat-derma': 'DERMATOLOGY'
+    };
+    const mappedCode = fallbackCodeMap[id] || id;
+
+    // Search by id, code, mappedCode, or name
     const existing: any = await prisma.$queryRawUnsafe(
-      `SELECT * FROM detailing_categories WHERE id = $1`,
-      id
+      `SELECT * FROM detailing_categories 
+       WHERE id = $1 
+          OR code = $1 
+          OR code = $2 
+          OR LOWER(name) = LOWER($3)
+       LIMIT 1`,
+      id,
+      mappedCode,
+      name ? name.trim() : ''
     );
-    if (!existing || existing.length === 0) {
-      return res.status(404).json({ success: false, message: 'Category not found' });
+
+    if (existing && existing.length > 0) {
+      const current = existing[0];
+      const targetId = current.id;
+      const newName = name !== undefined ? name.trim() : current.name;
+      const newDesc = description !== undefined ? description : current.description;
+      const newProds = productNames !== undefined ? productNames : current.productNames;
+      const newKeywords = doctorKeywords !== undefined ? doctorKeywords : current.doctorKeywords;
+      const newColor = color !== undefined ? color : current.color;
+
+      await prisma.$executeRawUnsafe(
+        `UPDATE detailing_categories 
+         SET name = $1, description = $2, "productNames" = $3, "doctorKeywords" = $4, color = $5, "updatedAt" = NOW()
+         WHERE id = $6`,
+        newName,
+        newDesc,
+        newProds,
+        newKeywords,
+        newColor,
+        targetId
+      );
+
+      const updated: any = await prisma.$queryRawUnsafe(
+        `SELECT * FROM detailing_categories WHERE id = $1`,
+        targetId
+      );
+
+      return res.json({ success: true, data: updated[0] });
     }
 
-    const current = existing[0];
-    const newName = name !== undefined ? name.trim() : current.name;
-    const newDesc = description !== undefined ? description : current.description;
-    const newProds = productNames !== undefined ? productNames : current.productNames;
-    const newKeywords = doctorKeywords !== undefined ? doctorKeywords : current.doctorKeywords;
-    const newColor = color !== undefined ? color : current.color;
+    // Fallback: If not found, create new category record (upsert)
+    const generatedCode = (mappedCode || name || id).toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    const { v4: uuidv4 } = require('uuid');
+    const targetId = id.startsWith('cat-') ? id : uuidv4();
+    const keywords = (doctorKeywords && doctorKeywords.length > 0)
+      ? doctorKeywords
+      : (name ? [name.toLowerCase(), ...name.toLowerCase().split(/\s+/)].filter((w: string) => w.length > 2) : []);
 
     await prisma.$executeRawUnsafe(
-      `UPDATE detailing_categories 
-       SET name = $1, description = $2, "productNames" = $3, "doctorKeywords" = $4, color = $5, "updatedAt" = NOW()
-       WHERE id = $6`,
-      newName,
-      newDesc,
-      newProds,
-      newKeywords,
-      newColor,
-      id
+      `INSERT INTO detailing_categories (id, name, code, description, "productNames", "doctorKeywords", color, "isActive", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
+       ON CONFLICT (name) DO UPDATE 
+       SET "productNames" = EXCLUDED."productNames", description = EXCLUDED.description, color = EXCLUDED.color, "updatedAt" = NOW()`,
+      targetId,
+      (name || id).trim(),
+      generatedCode,
+      description || null,
+      productNames || [],
+      keywords,
+      color || '#059669'
     );
 
-    const updated: any = await prisma.$queryRawUnsafe(
-      `SELECT * FROM detailing_categories WHERE id = $1`,
-      id
+    const created: any = await prisma.$queryRawUnsafe(
+      `SELECT * FROM detailing_categories WHERE id = $1 OR code = $2 LIMIT 1`,
+      targetId,
+      generatedCode
     );
 
-    res.json({ success: true, data: updated[0] });
+    return res.json({ success: true, data: created[0] });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message });
   }
@@ -141,9 +390,10 @@ router.put('/categories/:id', async (req, res) => {
 // Delete (deactivate) Detailing Category
 router.delete('/categories/:id', async (req, res) => {
   try {
+    await ensureDetailingCategoriesTable();
     const { id } = req.params;
     await prisma.$executeRawUnsafe(
-      `UPDATE detailing_categories SET "isActive" = false, "updatedAt" = NOW() WHERE id = $1`,
+      `UPDATE detailing_categories SET "isActive" = false, "updatedAt" = NOW() WHERE id = $1 OR code = $1`,
       id
     );
     res.json({ success: true, message: 'Category deleted' });
