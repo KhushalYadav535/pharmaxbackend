@@ -4,7 +4,11 @@ import { headquarterService } from '../services/headquarter.service';
 export const headquarterController = {
   async list(req: Request, res: Response) {
     try {
-      const result = await headquarterService.list(req.query);
+      const result = await headquarterService.list(
+        req.query,
+        req.user?.userId,
+        req.user?.role
+      );
       res.json({ success: true, data: result });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
   },

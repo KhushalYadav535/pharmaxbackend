@@ -103,4 +103,14 @@ export const employeeController = {
       res.json({ success: true, data: dossier });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
   },
+
+  // Live MR telemetry: real-time login status, session duration, and unplanned visit tracking
+  async getLiveTelemetry(req: Request, res: Response) {
+    try {
+      const result = await employeeService.getLiveTelemetry(req.user!.userId, req.user!.role);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
 };

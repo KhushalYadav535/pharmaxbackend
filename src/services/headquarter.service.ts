@@ -25,7 +25,7 @@ const HQ_SELECT = {
 } as const;
 
 export const headquarterService = {
-  async list(filters: any) {
+  async list(filters: any, userId?: string, userRole?: string) {
     const { page = 1, limit = 50, search, state } = filters;
     const p = Number(page), l = Number(limit);
     const where: any = {};
@@ -38,6 +38,28 @@ export const headquarterService = {
         { district: { contains: search, mode: 'insensitive' } },
         { state: { contains: search, mode: 'insensitive' } },
       ];
+    }
+
+    // Restrict MR/Rep users to only their assigned Headquarter(s)
+    if (userRole && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole) && userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { hqId: true },
+      });
+      const userTerritories = await prisma.userTerritory.findMany({
+        where: { userId },
+        select: { territoryId: true },
+      });
+      const allowedHqIds = [
+        user?.hqId,
+        ...userTerritories.map((ut) => ut.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (allowedHqIds.length > 0) {
+        where.id = { in: allowedHqIds };
+      } else {
+        where.id = '__none__';
+      }
     }
 
     const [headquarters, total] = await Promise.all([

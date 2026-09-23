@@ -201,6 +201,8 @@ model User {
   profilePhoto        String?
   isActive            Boolean        @default(true)
   lastLoginAt         DateTime?
+  lastActiveAt        DateTime?
+  lastLogoutAt        DateTime?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   deletedAt           DateTime?

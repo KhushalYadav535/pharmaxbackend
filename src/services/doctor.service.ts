@@ -58,14 +58,31 @@ export const doctorService = {
     if (areaId) andConditions.push({ areaId });
     if (hospitalId) andConditions.push({ hospitalId });
 
-    // MR/Rep level: only their territory
+    // MR/Rep level: only their assigned Headquarter(s)
     if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { hqId: true },
+      });
       const userTerritories = await prisma.userTerritory.findMany({
         where: { userId },
         select: { territoryId: true },
       });
-      const tIds = userTerritories.map((ut) => ut.territoryId);
-      andConditions.push({ territoryId: { in: tIds } });
+      const hqIds = [
+        user?.hqId,
+        ...userTerritories.map((ut) => ut.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (hqIds.length > 0) {
+        andConditions.push({
+          OR: [
+            { hqId: { in: hqIds } },
+            { territoryId: { in: hqIds } },
+          ],
+        });
+      } else {
+        andConditions.push({ id: '__none__' });
+      }
     }
 
     const where: Prisma.DoctorWhereInput = { AND: andConditions };
@@ -78,6 +95,9 @@ export const doctorService = {
           territory: { select: { id: true, name: true } },
           hq: { select: { id: true, name: true } },
           area: { select: { id: true, name: true } },
+          productsSelected: {
+            include: { product: { select: { id: true, name: true, productCode: true } } },
+          },
           _count: { select: { visits: true } },
         },
         skip: (page - 1) * limit,
@@ -100,6 +120,9 @@ export const doctorService = {
         area: true,
         retailer: true,
         tags: true,
+        productsSelected: {
+          include: { product: true },
+        },
         visits: {
           orderBy: { checkInTime: 'desc' },
           take: 10,
@@ -129,10 +152,27 @@ export const doctorService = {
   async getStats(userId: string, userRole: string) {
     const where: Prisma.DoctorWhereInput = { deletedAt: null, isActive: true };
     if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {
-      const userTerritories = await prisma.userTerritory.findMany({
-        where: { userId }, select: { territoryId: true },
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { hqId: true },
       });
-      where.territoryId = { in: userTerritories.map((ut) => ut.territoryId) };
+      const userTerritories = await prisma.userTerritory.findMany({
+        where: { userId },
+        select: { territoryId: true },
+      });
+      const hqIds = [
+        user?.hqId,
+        ...userTerritories.map((ut) => ut.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (hqIds.length > 0) {
+        where.OR = [
+          { hqId: { in: hqIds } },
+          { territoryId: { in: hqIds } },
+        ];
+      } else {
+        where.id = '__none__';
+      }
     }
 
     const [total, byClassification, kolCount] = await Promise.all([

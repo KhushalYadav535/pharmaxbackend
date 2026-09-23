@@ -1,0 +1,25 @@
+services:
+  pharmax-backend:
+    build: .
+    container_name: pharmax-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5000"
+    networks:
+      - coolify
+      - postgresql-1ffd_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pharmax-backend.rule=Host(`pharmax-api.santiently.com`)"
+      - "traefik.http.routers.pharmax-backend.entrypoints=https"
+      - "traefik.http.routers.pharmax-backend.tls=true"
+      - "traefik.http.routers.pharmax-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pharmax-backend.loadbalancer.server.port=5000"
+
+networks:
+  coolify:
+    external: true
+  postgresql-1ffd_default:
+    external: true

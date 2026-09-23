@@ -1,0 +1,39 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            echo "=== Navigating to backend directory ==="
+            cd /opt/pharmaxbackend
+
+            echo "=== Pulling latest changes from Git ==="
+            git pull origin main
+
+            echo "=== Building Docker image and restarting container ==="
+            docker compose build
+            docker compose up -d --force-recreate
+
+            echo "=== Syncing database schema with Prisma ==="
+            docker compose exec -T pharmax-backend npx prisma db push || true
+
+            echo "=== Cleaning unused docker images ==="
+            docker image prune -f
+
+            echo "=== Deployment Status ==="
+            docker ps --filter "name=pharmax-backend"
+            echo "Deployment completed successfully!"

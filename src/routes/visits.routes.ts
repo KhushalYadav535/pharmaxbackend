@@ -20,6 +20,7 @@ router.patch('/:id/engage',     auditLog('ENGAGE','Visit'),        visitControll
 router.patch('/:id/detail',     auditLog('DETAIL','Visit'),        visitController.detail);
 router.patch('/:id/check-out',  auditLog('CHECK_OUT','Visit'),     visitController.checkOut);
 router.patch('/:id/submit-report', auditLog('SUBMIT_REPORT','Visit'), visitController.submitReport);
+router.patch('/:id/draft-report',  auditLog('DRAFT_REPORT', 'Visit'), visitController.saveDraftReport);
 router.patch('/:id/next-call',  auditLog('NEXT_CALL','Visit'),     visitController.nextCall);
 router.patch('/:id/mark-missed', auditLog('MARK_MISSED','Visit'),  visitController.markMissed);
 router.patch('/:id/notes',                                         visitController.updateNotes);

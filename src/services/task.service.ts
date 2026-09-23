@@ -2,7 +2,7 @@ import prisma from '../config/database';
 
 export const taskService = {
   async list(filters: any) {
-    const { page = 1, limit = 20, assignedToId, status, priority, type } = filters;
+    const { page = 1, limit = 20, assignedToId, status, priority, type, fromDate, toDate } = filters;
     const p = Number(page), l = Number(limit);
     
     const where: any = {};
@@ -10,6 +10,11 @@ export const taskService = {
     if (status) where.status = status;
     if (priority) where.priority = priority;
     if (type) where.type = type;
+    if (fromDate || toDate) {
+      where.dueDate = {};
+      if (fromDate) where.dueDate.gte = new Date(new Date(fromDate).setHours(0, 0, 0, 0));
+      if (toDate) where.dueDate.lte = new Date(new Date(toDate).setHours(23, 59, 59, 999));
+    }
 
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({

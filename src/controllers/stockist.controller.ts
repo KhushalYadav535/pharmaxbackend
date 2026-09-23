@@ -4,7 +4,7 @@ import { stockistService } from '../services/stockist.service';
 export const stockistController = {
   async list(req: Request, res: Response) {
     try {
-      const result = await stockistService.list(req.query);
+      const result = await stockistService.list(req.query, req.user!.userId, req.user!.role);
       res.json({ success: true, data: result });
     } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
   },

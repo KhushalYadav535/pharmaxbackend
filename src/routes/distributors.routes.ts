@@ -14,6 +14,25 @@ router.get('/', async (req, res) => {
       deletedAt: null, isActive: true, approvalStatus: (req.query.approvalStatus as any) || 'APPROVED',
       ...(search && { OR: [{ name: { contains: search as string, mode: 'insensitive' } }] }),
     };
+
+    if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: { hqId: true },
+      });
+      const territories = await prisma.userTerritory.findMany({ where: { userId: req.user!.userId }, select: { territoryId: true } });
+      const hqIds = [
+        user?.hqId,
+        ...territories.map((t) => t.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (hqIds.length > 0) {
+        where.territoryId = { in: hqIds };
+      } else {
+        where.id = '__none__';
+      }
+    }
+
     const p = parseInt(page as string); const l = parseInt(limit as string);
     const [distributors, total] = await Promise.all([
       prisma.distributor.findMany({ where, include: { territory: { select: { id: true, name: true } } }, skip: (p - 1) * l, take: l, orderBy: { name: 'asc' } }),

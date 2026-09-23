@@ -128,6 +128,16 @@ export const visitController = {
     }
   },
 
+  // Save Draft Report: Keeps status as REPORT_PENDING
+  async saveDraftReport(req: Request, res: Response) {
+    try {
+      const visit = await visitService.saveDraftReport((req.params.id as string), req.user!.userId, req.body);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
   // §2.2 Next Call: REPORTED → NEXT_CALL
   async nextCall(req: Request, res: Response) {
     try {

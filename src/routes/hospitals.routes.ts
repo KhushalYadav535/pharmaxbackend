@@ -14,6 +14,36 @@ router.get('/', async (req, res) => {
       deletedAt: null, isActive: true, approvalStatus: (req.query.approvalStatus as any) || 'APPROVED',
       ...(search && { name: { contains: search as string, mode: 'insensitive' } }),
     };
+
+    if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: { hqId: true },
+      });
+      const userTerritories = await prisma.userTerritory.findMany({
+        where: { userId: req.user!.userId },
+        select: { territoryId: true },
+      });
+      const hqIds = [
+        user?.hqId,
+        ...userTerritories.map((ut) => ut.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (hqIds.length > 0) {
+        where.AND = [
+          ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+          {
+            OR: [
+              { hqId: { in: hqIds } },
+              { territoryId: { in: hqIds } },
+            ],
+          },
+        ];
+      } else {
+        where.id = '__none__';
+      }
+    }
+
     const p = parseInt(page as string); const l = parseInt(limit as string);
     const [hospitals, total] = await Promise.all([
       prisma.hospital.findMany({ where, include: { territory: { select: { id: true, name: true } }, _count: { select: { doctors: true } } }, skip: (p - 1) * l, take: l, orderBy: { name: 'asc' } }),

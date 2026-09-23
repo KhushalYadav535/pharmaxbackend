@@ -30,6 +30,10 @@ export const authService = {
     const email = input.email.trim().toLowerCase();
     let user = await prisma.user.findUnique({
       where: { email },
+      include: {
+        hq: { select: { id: true, name: true, code: true } },
+        territories: { include: { territory: true } },
+      },
     });
 
     // Fallback alias for Shubham / Subham Patil
@@ -37,6 +41,10 @@ export const authService = {
       const altEmail = email === 'shubhampatil255726@gmail.com' ? 'subhampatil255726@gmail.com' : 'shubhampatil255726@gmail.com';
       user = await prisma.user.findUnique({
         where: { email: altEmail },
+        include: {
+          hq: { select: { id: true, name: true, code: true } },
+          territories: { include: { territory: true } },
+        },
       });
     }
 
@@ -58,7 +66,7 @@ export const authService = {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date(), lastActiveAt: new Date() },
     });
 
     return {
@@ -72,6 +80,9 @@ export const authService = {
         role: user.role,
         profilePhoto: user.profilePhoto,
         employeeId: user.employeeId,
+        hqId: user.hqId,
+        hq: user.hq,
+        territories: user.territories,
       },
     };
   },
@@ -114,6 +125,12 @@ export const authService = {
 
     if (!storedToken.user.isActive) throw new Error('User inactive');
 
+    // Update lastActiveAt on token refresh
+    await prisma.user.update({
+      where: { id: storedToken.user.id },
+      data: { lastActiveAt: new Date() },
+    }).catch(() => {});
+
     // Rotate refresh token
     await prisma.refreshToken.update({ where: { id: storedToken.id }, data: { isRevoked: true } });
 
@@ -129,9 +146,29 @@ export const authService = {
   },
 
   async logout(token: string) {
+    const stored = await prisma.refreshToken.findUnique({
+      where: { token },
+      select: { userId: true },
+    });
+
     await prisma.refreshToken.updateMany({
       where: { token },
       data: { isRevoked: true },
+    });
+
+    if (stored?.userId) {
+      await prisma.user.update({
+        where: { id: stored.userId },
+        data: { lastLogoutAt: new Date() },
+      }).catch(() => {});
+    }
+  },
+
+  async heartbeat(userId: string) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { lastActiveAt: new Date() },
+      select: { id: true, lastActiveAt: true },
     });
   },
 
@@ -146,7 +183,7 @@ export const authService = {
         whatsappNumber: true, dateOfBirth: true, marriageAnniversary: true,
         facebook: true, instagram: true, twitter: true, linkedin: true,
         spouseName: true, dependents: true, aadharNumber: true, panNumber: true,
-        lastLoginAt: true, createdAt: true,
+        lastLoginAt: true, lastActiveAt: true, lastLogoutAt: true, createdAt: true,
         hqId: true,
         hq: { select: { id: true, name: true, code: true } },
         territories: { include: { territory: true } },

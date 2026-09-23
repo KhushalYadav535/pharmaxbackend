@@ -15,9 +15,30 @@ router.get('/', async (req, res) => {
       ...(search && { OR: [{ name: { contains: search as string, mode: 'insensitive' } }, { ownerName: { contains: search as string, mode: 'insensitive' } }] }),
       ...(territoryId && { territoryId: territoryId as string }),
     };
-    if (['MR', 'TRADE_REP'].includes(req.user!.role)) {
+    if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: { hqId: true },
+      });
       const territories = await prisma.userTerritory.findMany({ where: { userId: req.user!.userId }, select: { territoryId: true } });
-      where.territoryId = { in: territories.map((t) => t.territoryId) };
+      const hqIds = [
+        user?.hqId,
+        ...territories.map((t) => t.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (hqIds.length > 0) {
+        where.AND = [
+          ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+          {
+            OR: [
+              { hqId: { in: hqIds } },
+              { territoryId: { in: hqIds } },
+            ],
+          },
+        ];
+      } else {
+        where.id = '__none__';
+      }
     }
     const p = parseInt(page as string); const l = parseInt(limit as string);
     const [retailers, total] = await Promise.all([

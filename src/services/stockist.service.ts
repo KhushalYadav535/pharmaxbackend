@@ -1,7 +1,7 @@
 import prisma from '../config/database';
 
 export const stockistService = {
-  async list(filters: any) {
+  async list(filters: any, userId?: string, userRole?: string) {
     const { page = 1, limit = 20, hqId, cfaId, search, isActive } = filters;
     const p = Number(page), l = Number(limit);
     const where: any = {};
@@ -9,6 +9,25 @@ export const stockistService = {
     if (cfaId) where.cfaId = cfaId;
     if (isActive !== undefined) where.isActive = isActive === 'true';
     if (search) where.name = { contains: search, mode: 'insensitive' };
+
+    if (userRole && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole) && userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { hqId: true },
+      });
+      const territories = await prisma.userTerritory.findMany({ where: { userId }, select: { territoryId: true } });
+      const hqIds = [
+        user?.hqId,
+        ...territories.map((t) => t.territoryId),
+      ].filter(Boolean) as string[];
+
+      if (hqIds.length > 0) {
+        where.hqId = { in: hqIds };
+      } else {
+        where.id = '__none__';
+      }
+    }
+
     const [stockists, total] = await Promise.all([
       prisma.stockist.findMany({ where, include: { hq: { select: { id: true, name: true } }, area: { select: { id: true, name: true } }, cfa: { select: { id: true, name: true } } }, skip: (p - 1) * l, take: l, orderBy: { name: 'asc' } }),
       prisma.stockist.count({ where }),

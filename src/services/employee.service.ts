@@ -1,5 +1,19 @@
 import prisma from '../config/database';
 import bcrypt from 'bcryptjs';
+import { Prisma } from '@prisma/client';
+
+async function getHierarchyIds(managerId: string): Promise<string[]> {
+  const directReports = await prisma.user.findMany({
+    where: { managerId, isActive: true },
+    select: { id: true },
+  });
+  const ids: string[] = directReports.map((r) => r.id);
+  for (const r of directReports) {
+    const sub = await getHierarchyIds(r.id);
+    ids.push(...sub);
+  }
+  return ids;
+}
 
 const EMPLOYEE_SELECT = {
   id: true,
@@ -596,5 +610,189 @@ export const employeeService = {
 
   async removeTerritory(userId: string, territoryId: string) {
     return prisma.userTerritory.deleteMany({ where: { userId, territoryId } });
+  },
+
+  // ── Live MR Telemetry: Online / Offline, Session Duration, & Unplanned Call Flagging ──
+  async getLiveTelemetry(requestingUserId: string, userRole: string) {
+    const isSuperAdmin = ['SUPER_ADMIN', 'SALES_ADMIN', 'ADMIN'].includes(userRole);
+    
+    // Determine which MRs to monitor
+    let mrWhere: Prisma.UserWhereInput = {
+      deletedAt: null,
+      isActive: true,
+      role: { in: ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'] },
+    };
+
+    if (!isSuperAdmin) {
+      // Manager: see their direct reports and subordinates
+      const reporteeIds = await getHierarchyIds(requestingUserId);
+      mrWhere.id = { in: [requestingUserId, ...reporteeIds] };
+    }
+
+    const mrs = await prisma.user.findMany({
+      where: mrWhere,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employeeId: true,
+        email: true,
+        role: true,
+        profilePhoto: true,
+        lastLoginAt: true,
+        lastActiveAt: true,
+        lastLogoutAt: true,
+        hq: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: [{ firstName: 'asc' }],
+    });
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const mrIds = mrs.map((m) => m.id);
+
+    // Fetch today's attendance & visits for all MRs
+    const [todayAttendances, todayVisits, monthUnplannedGroup] = await Promise.all([
+      prisma.attendance.findMany({
+        where: { userId: { in: mrIds }, date: { gte: startOfToday, lte: endOfToday } },
+        select: { userId: true, checkInTime: true, checkOutTime: true, dayStatus: true },
+      }),
+      prisma.visit.findMany({
+        where: { userId: { in: mrIds }, plannedDate: { gte: startOfToday, lte: endOfToday } },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          isUnplanned: true,
+          unplannedReason: true,
+          checkInTime: true,
+          doctor: { select: { id: true, firstName: true, lastName: true } },
+          hospital: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.visit.groupBy({
+        by: ['userId'],
+        where: { userId: { in: mrIds }, plannedDate: { gte: startOfMonth, lte: endOfToday }, isUnplanned: true },
+        _count: true,
+      }),
+    ]);
+
+    const monthUnplannedMap = new Map<string, number>();
+    monthUnplannedGroup.forEach((g) => monthUnplannedMap.set(g.userId, g._count));
+
+    const nowTime = now.getTime();
+    const telemetry = mrs.map((mr) => {
+      const att = todayAttendances.find((a) => a.userId === mr.id);
+      const visits = todayVisits.filter((v) => v.userId === mr.id);
+      const unplannedVisits = visits.filter((v) => v.isUnplanned);
+      const plannedVisits = visits.filter((v) => !v.isUnplanned);
+      const completedVisits = visits.filter((v) => ['COMPLETED', 'REPORTED'].includes(v.status));
+
+      // Calculate Online / Login Status
+      const lastLogin = mr.lastLoginAt ? new Date(mr.lastLoginAt) : null;
+      const lastActive = mr.lastActiveAt ? new Date(mr.lastActiveAt) : null;
+      const lastLogout = mr.lastLogoutAt ? new Date(mr.lastLogoutAt) : null;
+
+      const hasCheckedInToday = !!att?.checkInTime && !att?.checkOutTime && att.dayStatus === 'IN_PROGRESS';
+      const recentActivity = lastActive ? (nowTime - lastActive.getTime()) < 30 * 60 * 1000 : false;
+      const loggedInNoLogout = lastLogin ? (!lastLogout || lastLogout < lastLogin) : false;
+
+      let status: 'ONLINE' | 'AWAY' | 'OFFLINE' = 'OFFLINE';
+      if (loggedInNoLogout && (recentActivity || hasCheckedInToday)) {
+        status = 'ONLINE';
+      } else if (loggedInNoLogout && lastLogin && (nowTime - lastLogin.getTime()) < 12 * 60 * 60 * 1000) {
+        status = 'AWAY';
+      } else {
+        status = 'OFFLINE';
+      }
+
+      // Calculate Session Duration
+      let sessionMinutes = 0;
+      let formattedDuration = '0m';
+      if (status === 'ONLINE' || status === 'AWAY') {
+        const sessionStart = lastLogin || (att?.checkInTime ? new Date(att.checkInTime) : lastActive);
+        if (sessionStart) {
+          sessionMinutes = Math.max(0, Math.round((nowTime - sessionStart.getTime()) / 60000));
+          const h = Math.floor(sessionMinutes / 60);
+          const m = sessionMinutes % 60;
+          formattedDuration = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+      } else if (lastLogin && lastLogout && lastLogout > lastLogin && (nowTime - lastLogout.getTime()) < 24 * 60 * 60 * 1000) {
+        sessionMinutes = Math.max(0, Math.round((lastLogout.getTime() - lastLogin.getTime()) / 60000));
+        const h = Math.floor(sessionMinutes / 60);
+        const m = sessionMinutes % 60;
+        formattedDuration = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      }
+
+      // Unplanned Call Flags
+      const totalVisitsCount = visits.length;
+      const unplannedCount = unplannedVisits.length;
+      const unplannedRatio = totalVisitsCount > 0 ? Math.round((unplannedCount / totalVisitsCount) * 100) : 0;
+      const isFlagged = unplannedCount >= 2 || (totalVisitsCount >= 3 && unplannedRatio >= 40);
+      let flagReason: string | null = null;
+      if (unplannedCount >= 2) {
+        flagReason = `${unplannedCount} unplanned calls logged today`;
+      } else if (totalVisitsCount >= 3 && unplannedRatio >= 40) {
+        flagReason = `${unplannedRatio}% of today's calls are unplanned`;
+      }
+
+      return {
+        id: mr.id,
+        name: `${mr.firstName} ${mr.lastName}`.trim(),
+        firstName: mr.firstName,
+        lastName: mr.lastName,
+        employeeId: mr.employeeId,
+        email: mr.email,
+        role: mr.role,
+        profilePhoto: mr.profilePhoto,
+        hq: mr.hq,
+        status, // ONLINE | AWAY | OFFLINE
+        isOnline: status === 'ONLINE',
+        lastLoginAt: mr.lastLoginAt,
+        lastActiveAt: mr.lastActiveAt,
+        lastLogoutAt: mr.lastLogoutAt,
+        sessionMinutes,
+        formattedDuration,
+        dayStatus: att?.dayStatus || 'NOT_STARTED',
+        todayMetrics: {
+          totalVisits: totalVisitsCount,
+          plannedVisits: plannedVisits.length,
+          completedVisits: completedVisits.length,
+          unplannedVisits: unplannedCount,
+          unplannedRatio,
+        },
+        monthUnplannedCount: monthUnplannedMap.get(mr.id) || 0,
+        isFlagged,
+        flagReason,
+        recentUnplannedCalls: unplannedVisits.slice(0, 3).map((v) => ({
+          id: v.id,
+          doctorName: v.doctor ? `Dr. ${v.doctor.firstName} ${v.doctor.lastName}` : null,
+          hospitalName: v.hospital?.name || null,
+          time: v.checkInTime || null,
+          reason: v.unplannedReason || 'Field Direct Unplanned Visit',
+        })),
+      };
+    });
+
+    const onlineCount = telemetry.filter((t) => t.status === 'ONLINE').length;
+    const awayCount = telemetry.filter((t) => t.status === 'AWAY').length;
+    const offlineCount = telemetry.filter((t) => t.status === 'OFFLINE').length;
+    const flaggedCount = telemetry.filter((t) => t.isFlagged).length;
+    const totalUnplannedToday = telemetry.reduce((sum, t) => sum + t.todayMetrics.unplannedVisits, 0);
+
+    return {
+      summary: {
+        totalMRs: mrs.length,
+        onlineCount,
+        awayCount,
+        offlineCount,
+        flaggedCount,
+        totalUnplannedToday,
+      },
+      telemetry,
+    };
   },
 };

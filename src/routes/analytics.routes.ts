@@ -228,21 +228,55 @@ router.get('/expense-summary', async (req, res) => {
 // Day End Summary
 router.get('/day-end-summary', async (req, res) => {
   try {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateQuery = req.query.date as string | undefined;
+    let istYear: number;
+    let istMonth: number;
+    let istDate: number;
+
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+
+    if (dateQuery && /^\d{4}-\d{2}-\d{2}/.test(dateQuery)) {
+      const parts = dateQuery.substring(0, 10).split('-').map(Number);
+      istYear = parts[0];
+      istMonth = parts[1] - 1;
+      istDate = parts[2];
+    } else {
+      const now = new Date();
+      const istNow = new Date(now.getTime() + istOffsetMs);
+      istYear = istNow.getUTCFullYear();
+      istMonth = istNow.getUTCMonth();
+      istDate = istNow.getUTCDate();
+    }
+
+    // Start and end of target day in IST (+05:30) converted to UTC
+    const istDayStartUtc = new Date(Date.UTC(istYear, istMonth, istDate, 0, 0, 0, 0) - istOffsetMs);
+    const istDayEndUtc = new Date(Date.UTC(istYear, istMonth, istDate, 23, 59, 59, 999) - istOffsetMs);
+
+    // Standard UTC day boundaries
+    const utcDayStart = new Date(Date.UTC(istYear, istMonth, istDate, 0, 0, 0, 0));
+    const utcDayEnd = new Date(Date.UTC(istYear, istMonth, istDate, 23, 59, 59, 999));
+
+    const windowStart = new Date(Math.min(istDayStartUtc.getTime(), utcDayStart.getTime()));
+    const windowEnd = new Date(Math.max(istDayEndUtc.getTime(), utcDayEnd.getTime()));
     
     const where: any = {
-      plannedDate: { gte: today, lt: tomorrow },
       ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
+      OR: [
+        { plannedDate: { gte: windowStart, lte: windowEnd } },
+        { checkInTime: { gte: windowStart, lte: windowEnd } },
+        { checkOutTime: { gte: windowStart, lte: windowEnd } },
+        { reportSubmittedAt: { gte: windowStart, lte: windowEnd } },
+        { createdAt: { gte: windowStart, lte: windowEnd } },
+      ],
     };
 
     const visits = await prisma.visit.findMany({ 
       where, 
       include: { 
-        doctor: true, hospital: true, retailer: true, stockist: true, 
+        doctor: true, hospital: true, retailer: true, stockist: true, distributor: true,
         orders: true, sampleDistributions: true 
       },
-      orderBy: { checkInTime: 'asc' } 
+      orderBy: [{ checkInTime: 'asc' }, { plannedDate: 'asc' }] 
     });
 
     const planned = visits.length;
@@ -258,7 +292,7 @@ router.get('/day-end-summary', async (req, res) => {
     const doctors = visits.filter(v => v.visitType === 'DOCTOR' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
     const hospitals = visits.filter(v => v.visitType === 'HOSPITAL' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
     const retailers = visits.filter(v => v.visitType === 'RETAILER' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
-    const stockists = visits.filter(v => v.visitType === 'STOCKIST' && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
+    const stockists = visits.filter(v => ['STOCKIST', 'DISTRIBUTOR'].includes(v.visitType) && ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).length;
 
     // Business
     let productsDetailed = 0;
@@ -269,44 +303,65 @@ router.get('/day-end-summary', async (req, res) => {
     visits.filter(v => ['COMPLETED', 'REPORTED', 'NEXT_CALL'].includes(v.status)).forEach(v => {
       productsDetailed += v.productsDiscussed?.length || 0;
       newOpportunities += v.businessSignal?.length || 0;
-      v.orders.forEach(o => ordersBooked += (o.totalAmount || 0));
-      v.sampleDistributions.forEach(s => samplesDistributed += (s.quantity || 0));
+      (v.orders || []).forEach(o => ordersBooked += (o.totalAmount || 0));
+      (v.sampleDistributions || []).forEach(s => samplesDistributed += (s.quantity || 0));
     });
 
     // Engagement
-    const positive = visits.filter(v => v.engagement === 'High' || v.engagement === 'Positive').length;
+    const positive = visits.filter(v => v.engagement === 'High' || v.engagement === 'Positive' || v.engagement === 'Very Positive').length;
     const neutral = visits.filter(v => v.engagement === 'Medium' || v.engagement === 'Neutral').length;
-    const negative = visits.filter(v => v.engagement === 'Low' || v.engagement === 'Negative').length;
+    const negative = visits.filter(v => v.engagement === 'Low' || v.engagement === 'Negative' || v.engagement === 'Very Negative').length;
 
     // Timeline
     const timeline = visits.map(v => {
       let targetName = 'Unknown';
       let targetSub = '';
       if (v.visitType === 'DOCTOR' && v.doctor) { targetName = `Dr. ${v.doctor.firstName} ${v.doctor.lastName}`; targetSub = v.doctor.specialty || ''; }
-      else if (v.visitType === 'HOSPITAL' && v.hospital) targetName = v.hospital.name;
-      else if (v.visitType === 'RETAILER' && v.retailer) targetName = v.retailer.name;
-      else if (v.visitType === 'STOCKIST' && v.stockist) targetName = v.stockist.name;
+      else if (v.visitType === 'HOSPITAL' && v.hospital) { targetName = v.hospital.name; targetSub = v.hospital.type || 'Hospital'; }
+      else if (v.visitType === 'RETAILER' && v.retailer) { targetName = v.retailer.name; targetSub = v.retailer.city || 'Pharmacy'; }
+      else if (v.visitType === 'STOCKIST' && v.stockist) { targetName = v.stockist.name; targetSub = 'Stockist'; }
+      else if (v.visitType === 'DISTRIBUTOR' && (v.distributor || v.stockist)) { targetName = v.distributor?.name || v.stockist?.name; targetSub = 'Distributor'; }
+
+      const ordersAmount = Array.isArray(v.orders)
+        ? v.orders.reduce((acc: number, o: any) => acc + (o.totalAmount || 0), 0)
+        : 0;
+      const samplesCount = Array.isArray(v.sampleDistributions)
+        ? v.sampleDistributions.reduce((acc: number, s: any) => acc + (s.quantity || 0), 0)
+        : 0;
 
       return {
         id: v.id,
-        time: v.checkInTime ? v.checkInTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (v.plannedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Pending'),
+        time: v.checkInTime ? v.checkInTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (v.plannedDate ? v.plannedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'),
         targetName,
         targetSub,
         type: v.visitType,
         status: v.status,
         engagement: v.engagement,
-        duration: v.durationMinutes
+        duration: v.durationMinutes,
+        ordersAmount,
+        samplesCount,
       };
     });
 
+    // Attendance for the specified date
+    const attendance = await prisma.attendance.findFirst({
+      where: {
+        userId: req.user!.userId,
+        OR: [
+          { date: { gte: windowStart, lte: windowEnd } },
+          { checkInTime: { gte: windowStart, lte: windowEnd } }
+        ]
+      }
+    });
+
     // Pending & Attention
-    const sevenDaysFromNow = new Date(today);
+    const sevenDaysFromNow = new Date(windowEnd);
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
     
     const followUpsDue = await prisma.visit.count({
       where: {
         ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
-        nextFollowUpDate: { gte: today, lt: sevenDaysFromNow }
+        nextFollowUpDate: { gte: windowStart, lt: sevenDaysFromNow }
       }
     });
 
@@ -323,18 +378,20 @@ router.get('/day-end-summary', async (req, res) => {
       where: {
         ...((['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) ? { userId: req.user!.userId } : {}),
         approvalStatus: 'PENDING',
-        createdAt: { gte: today, lt: tomorrow }
+        createdAt: { gte: windowStart, lte: windowEnd }
       }
     });
 
     res.json({
       success: true,
       data: {
+        dateStr: `${istYear}-${String(istMonth + 1).padStart(2, '0')}-${String(istDate).padStart(2, '0')}`,
         performance: { planned, completed, missed, totalDuration, totalTravel },
         callBreakdown: { doctors, hospitals, retailers, stockists },
         business: { productsDetailed, ordersBooked, samplesDistributed, newOpportunities },
         engagement: { positive, neutral, negative },
         timeline,
+        attendance,
         pendingAttention: {
           followUpsDue,
           ordersPendingCount,

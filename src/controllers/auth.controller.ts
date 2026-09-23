@@ -51,4 +51,13 @@ export const authController = {
       res.status(500).json({ success: false, message: err.message });
     }
   },
+
+  async heartbeat(req: Request, res: Response) {
+    try {
+      const result = await authService.heartbeat(req.user!.userId);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
 };

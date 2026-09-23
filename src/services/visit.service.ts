@@ -237,21 +237,36 @@ export const visitService = {
     if (!visit) throw new Error('Visit not found');
 
     let lastVisit = null;
+    let visitHistory: any[] = [];
     if (visit.doctorId || visit.hospitalId || visit.retailerId || visit.distributorId) {
-      lastVisit = await prisma.visit.findFirst({
+      const targetFilter = {
+        ...(visit.doctorId && { doctorId: visit.doctorId }),
+        ...(visit.hospitalId && { hospitalId: visit.hospitalId }),
+        ...(visit.retailerId && { retailerId: visit.retailerId }),
+        ...(visit.distributorId && { distributorId: visit.distributorId }),
+      };
+
+      const pastVisits = await prisma.visit.findMany({
         where: {
-          status: { in: ['REPORTED', 'COMPLETED'] }, // both for backward compat
-          plannedDate: { lt: visit.plannedDate },
-          ...(visit.doctorId && { doctorId: visit.doctorId }),
-          ...(visit.hospitalId && { hospitalId: visit.hospitalId }),
-          ...(visit.retailerId && { retailerId: visit.retailerId }),
-          ...(visit.distributorId && { distributorId: visit.distributorId }),
+          id: { not: visit.id },
+          ...targetFilter,
+        },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
+          sampleDistributions: { include: { sampleProduct: true } },
+          orders: { include: { items: { include: { product: true } } } },
         },
         orderBy: { plannedDate: 'desc' },
+        take: 10,
       });
+
+      if (pastVisits.length > 0) {
+        lastVisit = pastVisits.find((v) => ['REPORTED', 'COMPLETED'].includes(v.status)) || pastVisits[0];
+        visitHistory = pastVisits;
+      }
     }
 
-    return { ...visit, lastVisit };
+    return { ...visit, lastVisit, visitHistory };
   },
 
   async updateNotes(id: string, notes: string) {
@@ -272,7 +287,7 @@ export const visitService = {
       throw new Error('Your day is closed. You cannot plan new visits for today.');
     }
 
-    return prisma.visit.create({
+    const visit = await prisma.visit.create({
       data: {
         visitType: data.visitType,
         plannedDate: new Date(data.plannedDate),
@@ -290,6 +305,60 @@ export const visitService = {
         approvalStatus: ApprovalStatus.PENDING,
       },
     });
+
+    // Flag unplanned call to manager & admin
+    if (data.isUnplanned) {
+      try {
+        const mrUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true, managerId: true, hq: { select: { name: true } } },
+        });
+
+        let targetName = 'Client';
+        if (data.doctorId) {
+          const doc = await prisma.doctor.findUnique({
+            where: { id: data.doctorId },
+            select: { firstName: true, lastName: true },
+          });
+          if (doc) targetName = `Dr. ${doc.firstName} ${doc.lastName}`;
+        } else if (data.hospitalId) {
+          const hosp = await prisma.hospital.findUnique({
+            where: { id: data.hospitalId },
+            select: { name: true },
+          });
+          if (hosp) targetName = hosp.name;
+        }
+
+        const recipients: string[] = [];
+        if (mrUser?.managerId) recipients.push(mrUser.managerId);
+
+        const superAdmins = await prisma.user.findMany({
+          where: { role: 'SUPER_ADMIN', isActive: true },
+          select: { id: true },
+        });
+        superAdmins.forEach((sa) => {
+          if (!recipients.includes(sa.id)) recipients.push(sa.id);
+        });
+
+        const notifyPromises = recipients.map((toUserId) =>
+          prisma.notification.create({
+            data: {
+              toUserId,
+              fromUserId: userId,
+              title: '⚡ Unplanned Call Flagged',
+              body: `${mrUser?.firstName || 'MR'} ${mrUser?.lastName || ''} logged an unplanned visit for ${targetName} (${mrUser?.hq?.name || 'Field'}).`,
+              type: 'VISIT_UNPLANNED_ALERT',
+              data: { visitId: visit.id, doctorId: data.doctorId, targetName, isUnplanned: true },
+            },
+          })
+        );
+        await Promise.allSettled(notifyPromises);
+      } catch (notifErr) {
+        console.warn('Failed to dispatch unplanned visit notification:', notifErr);
+      }
+    }
+
+    return visit;
   },
 
   // ── §6 Navigate — PLANNED / NAVIGATING → NAVIGATING ──────────────────
@@ -444,14 +513,15 @@ export const visitService = {
     });
   },
 
-  // ── §18 Submit Report — CHECKED_OUT/REPORT_PENDING → REPORTED ────────────
+  // ── §18 Submit Report — CHECKED_OUT/REPORT_PENDING/active → REPORTED ────
   async submitReport(id: string, userId: string, data: SubmitReportInput) {
     const visit = await prisma.visit.findUnique({ where: { id } });
     if (!visit) throw new Error('Visit not found');
     if (visit.userId !== userId) throw new Error('Access denied');
 
-    if (!['CHECKED_OUT', 'REPORT_PENDING'].includes(visit.status)) {
-      throw new Error(`Cannot submit report: visit is currently ${visit.status}. Must be CHECKED_OUT or REPORT_PENDING.`);
+    // Strict business rule: Visit MUST be checked out before submitting report
+    if (!visit.checkOutTime && !['CHECKED_OUT', 'REPORT_PENDING', 'REPORTED', 'COMPLETED', 'NEXT_CALL'].includes(visit.status)) {
+      throw new Error(`Cannot submit report: Visit must be checked out before submitting report.`);
     }
 
     // Validate mandatory fields (§18)
@@ -462,11 +532,18 @@ export const visitService = {
       throw new Error('Follow-up action is required to submit the report.');
     }
 
+    const checkOutTime = visit.checkOutTime || new Date();
+    const durationMinutes = visit.durationMinutes ?? (visit.checkInTime
+      ? Math.max(1, Math.round((checkOutTime.getTime() - visit.checkInTime.getTime()) / 60000))
+      : 1);
+
     return prisma.visit.update({
       where: { id },
       data: {
         status: VisitStatus.REPORTED,
         reportSubmittedAt: new Date(),
+        checkOutTime,
+        durationMinutes,
         visitFeedback: data.feedback,
         engagement: data.engagement,
         followUpAction: data.followUpAction,
@@ -476,6 +553,41 @@ export const visitService = {
         businessSignal: data.businessSignal || [],
         visitObjective: data.visitObjective || [],
         productsDiscussed: data.productsDiscussed || [],
+      },
+    });
+  },
+
+  // ── Save Draft Report — Partial updates, remains in REPORT_PENDING ────────
+  async saveDraftReport(id: string, userId: string, data: Partial<SubmitReportInput>) {
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (!visit) throw new Error('Visit not found');
+    if (visit.userId !== userId) throw new Error('Access denied');
+
+    const allowedStatuses = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'CHECKED_OUT', 'REPORT_PENDING'];
+    if (!allowedStatuses.includes(visit.status)) {
+      throw new Error(`Cannot save draft report: visit is currently ${visit.status}.`);
+    }
+
+    const checkOutTime = visit.checkOutTime || new Date();
+    const durationMinutes = visit.durationMinutes ?? (visit.checkInTime
+      ? Math.max(1, Math.round((checkOutTime.getTime() - visit.checkInTime.getTime()) / 60000))
+      : 1);
+
+    return prisma.visit.update({
+      where: { id },
+      data: {
+        status: VisitStatus.REPORT_PENDING,
+        checkOutTime,
+        durationMinutes,
+        ...(data.feedback !== undefined && { visitFeedback: data.feedback }),
+        ...(data.engagement !== undefined && { engagement: data.engagement }),
+        ...(data.followUpAction !== undefined && { followUpAction: data.followUpAction }),
+        ...(data.nextFollowUpDate !== undefined && { nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : null }),
+        ...(data.notes !== undefined && { notes: data.notes }),
+        ...(data.objectionsRaised !== undefined && { objectionsRaised: data.objectionsRaised }),
+        ...(data.businessSignal !== undefined && { businessSignal: data.businessSignal }),
+        ...(data.visitObjective !== undefined && { visitObjective: data.visitObjective }),
+        ...(data.productsDiscussed !== undefined && { productsDiscussed: data.productsDiscussed }),
       },
     });
   },
