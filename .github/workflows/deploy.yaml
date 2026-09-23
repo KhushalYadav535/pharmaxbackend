@@ -36,6 +36,9 @@ jobs:
             echo "=== Importing Nagpur Doctors and Headquarter Data ==="
             docker compose exec -T pharmax-backend node import_nagpur_doctors.js || true
 
+            echo "=== Configuring MR Santosh Telang (Indore HQ) ==="
+            docker compose exec -T pharmax-backend node create_santosh_mr.js || true
+
             echo "=== Cleaning unused docker images ==="
             docker image prune -f
 
