@@ -10,8 +10,8 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🚀 Starting Nagpur Doctor List Import...\n');
 
-  // 1. Locate Nagpur Territory (Headquarter)
-  const nagpurHq = await prisma.territory.findFirst({
+  // 1. Locate or Create Nagpur Territory (Headquarter)
+  let nagpurHq = await prisma.territory.findFirst({
     where: {
       OR: [
         { code: 'HQ-NAGPUR' },
@@ -21,9 +21,50 @@ async function main() {
   });
 
   if (!nagpurHq) {
-    throw new Error('❌ Nagpur Headquarter (HQ-NAGPUR) territory not found in database!');
+    nagpurHq = await prisma.territory.create({
+      data: {
+        code: 'HQ-NAGPUR',
+        name: 'Nagpur',
+        district: 'Nagpur',
+        state: 'Maharashtra',
+        region: 'Vidarbha',
+        zone: 'West',
+        pinCode: '440001'
+      }
+    });
+    console.log(`✅ Created new Nagpur Headquarter: ${nagpurHq.name} (Code: ${nagpurHq.code}, ID: ${nagpurHq.id})`);
+  } else {
+    console.log(`✅ Found Nagpur HQ: ${nagpurHq.name} (Code: ${nagpurHq.code}, ID: ${nagpurHq.id})`);
   }
-  console.log(`✅ Found Nagpur HQ: ${nagpurHq.name} (Code: ${nagpurHq.code}, ID: ${nagpurHq.id})`);
+
+  // Ensure Nagpur MR (Vijay D Ludhekar) is linked to Nagpur HQ
+  const nagpurMr = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: { equals: 'vijayludhekar123@gmail.com', mode: 'insensitive' } },
+        { employeeCode: 'EMP011' },
+        { name: { contains: 'VIJAY', mode: 'insensitive' } }
+      ]
+    }
+  });
+
+  if (nagpurMr) {
+    await prisma.user.update({
+      where: { id: nagpurMr.id },
+      data: { hqId: nagpurHq.id }
+    });
+
+    const existingUt = await prisma.userTerritory.findFirst({
+      where: { userId: nagpurMr.id, territoryId: nagpurHq.id }
+    });
+    if (!existingUt) {
+      await prisma.userTerritory.create({
+        data: { userId: nagpurMr.id, territoryId: nagpurHq.id }
+      });
+    }
+    console.log(`👤 Successfully linked Nagpur MR: ${nagpurMr.name} (${nagpurMr.email}) to Nagpur HQ!`);
+  }
+
 
   // 2. Setup / Verify Sub-Area for Nagpur HQ
   let nagpurArea = await prisma.area.findFirst({
