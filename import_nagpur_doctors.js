@@ -97,50 +97,46 @@ async function main() {
   }
 
   // 3. Remove initial placeholder mock doctors in Nagpur HQ if they have 0 visits
+  // 3. Remove initial placeholder mock doctors in Nagpur HQ safely
   const dummyDocIds = [
     '757f8507-e638-41fe-954b-958452c7579d', // Rajesh Sharma
     '1e0910f3-0720-4b0a-b34b-58035bce4b3e', // Sunil Verma
   ];
   for (const dummyId of dummyDocIds) {
-    const doc = await prisma.doctor.findUnique({ where: { id: dummyId } });
-    if (doc && doc.hqId === nagpurHq.id) {
-      const visitCount = await prisma.visit.count({ where: { doctorId: dummyId } });
-      if (visitCount === 0) {
-        await prisma.doctor.delete({ where: { id: dummyId } });
-        console.log(`🗑️ Removed placeholder doctor: ${doc.firstName} ${doc.lastName} (${dummyId})`);
-      } else {
+    try {
+      const doc = await prisma.doctor.findUnique({ where: { id: dummyId } });
+      if (doc && doc.hqId === nagpurHq.id) {
         await prisma.doctor.update({
           where: { id: dummyId },
           data: { isActive: false, deletedAt: new Date() }
         });
-        console.log(`🔒 Soft-deleted placeholder doctor: ${doc.firstName} ${doc.lastName} (${dummyId})`);
+        console.log(`🔒 Deactivated placeholder doctor: ${doc.firstName} ${doc.lastName} (${dummyId})`);
       }
+    } catch (e) {
+      console.log(`⚠️ Skipped dummy cleanup for ${dummyId}:`, e.message);
     }
   }
 
-  // Also clean up any un-coded doctors named 'Rajesh Sharma' or 'Sunil Verma' in Nagpur HQ if generated with fresh IDs
-  const remainingDummies = await prisma.doctor.findMany({
-    where: {
-      hqId: nagpurHq.id,
-      doctorCode: null,
-      OR: [
-        { firstName: 'Rajesh', lastName: 'Sharma' },
-        { firstName: 'Sunil', lastName: 'Verma' }
-      ]
-    }
-  });
-  for (const dummy of remainingDummies) {
-    const visitCount = await prisma.visit.count({ where: { doctorId: dummy.id } });
-    if (visitCount === 0) {
-      await prisma.doctor.delete({ where: { id: dummy.id } });
-      console.log(`🗑️ Deleted un-coded dummy doctor: ${dummy.firstName} ${dummy.lastName} (${dummy.id})`);
-    } else {
+  try {
+    const remainingDummies = await prisma.doctor.findMany({
+      where: {
+        hqId: nagpurHq.id,
+        doctorCode: null,
+        OR: [
+          { firstName: 'Rajesh', lastName: 'Sharma' },
+          { firstName: 'Sunil', lastName: 'Verma' }
+        ]
+      }
+    });
+    for (const dummy of remainingDummies) {
       await prisma.doctor.update({
         where: { id: dummy.id },
         data: { isActive: false, deletedAt: new Date() }
       });
-      console.log(`🔒 Soft-deleted un-coded dummy doctor: ${dummy.firstName} ${dummy.lastName} (${dummy.id})`);
+      console.log(`🔒 Deactivated un-coded dummy doctor: ${dummy.firstName} ${dummy.lastName} (${dummy.id})`);
     }
+  } catch (e) {
+    console.log('⚠️ Skipped remaining dummies cleanup:', e.message);
   }
 
   // 4. Load JSON doctors payload
