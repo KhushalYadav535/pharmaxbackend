@@ -23,7 +23,8 @@ jobs:
             cd /opt/pharmaxbackend
 
             echo "=== Pulling latest changes from Git ==="
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "=== Building Docker image and restarting container ==="
             docker compose build
