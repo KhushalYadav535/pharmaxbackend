@@ -1502,3 +1502,21 @@ model DayStateLog {
 
   @@map("day_state_logs")
 }
+
+// ─── Detailing Category ───────────────────────────────────────────────────
+
+model DetailingCategory {
+  id             String    @id @default(uuid())
+  name           String    @unique
+  code           String
+  description    String?
+  productNames   String[]  @default([])
+  doctorKeywords String[]  @default([])
+  color          String?   @default("#059669")
+  isActive       Boolean?  @default(true)
+  createdAt      DateTime? @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@map("detailing_categories")
+}
+
