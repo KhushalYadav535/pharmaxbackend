@@ -38,31 +38,35 @@ async function main() {
   }
 
   // Ensure Nagpur MR (Vijay D Ludhekar) is linked to Nagpur HQ
-  const nagpurMr = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: { equals: 'vijayludhekar123@gmail.com', mode: 'insensitive' } },
-        { employeeCode: 'EMP011' },
-        { name: { contains: 'VIJAY', mode: 'insensitive' } }
-      ]
-    }
-  });
-
-  if (nagpurMr) {
-    await prisma.user.update({
-      where: { id: nagpurMr.id },
-      data: { hqId: nagpurHq.id }
+  try {
+    const nagpurMr = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: 'vijayludhekar123@gmail.com', mode: 'insensitive' } },
+          { employeeId: 'EMP011' },
+          { firstName: { contains: 'VIJAY', mode: 'insensitive' } }
+        ]
+      }
     });
 
-    const existingUt = await prisma.userTerritory.findFirst({
-      where: { userId: nagpurMr.id, territoryId: nagpurHq.id }
-    });
-    if (!existingUt) {
-      await prisma.userTerritory.create({
-        data: { userId: nagpurMr.id, territoryId: nagpurHq.id }
+    if (nagpurMr) {
+      await prisma.user.update({
+        where: { id: nagpurMr.id },
+        data: { hqId: nagpurHq.id }
       });
+
+      const existingUt = await prisma.userTerritory.findFirst({
+        where: { userId: nagpurMr.id, territoryId: nagpurHq.id }
+      });
+      if (!existingUt) {
+        await prisma.userTerritory.create({
+          data: { userId: nagpurMr.id, territoryId: nagpurHq.id }
+        });
+      }
+      console.log(`👤 Successfully linked Nagpur MR: ${nagpurMr.firstName} ${nagpurMr.lastName} (${nagpurMr.email}) to Nagpur HQ!`);
     }
-    console.log(`👤 Successfully linked Nagpur MR: ${nagpurMr.name} (${nagpurMr.email}) to Nagpur HQ!`);
+  } catch (mrErr) {
+    console.log('⚠️ Could not link Nagpur MR automatically:', mrErr.message);
   }
 
 
