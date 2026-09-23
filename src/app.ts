@@ -65,7 +65,7 @@ if (env.NODE_ENV !== 'test') {
 app.use('/uploads', express.static(path.join(process.cwd(), env.UPLOAD_DIR)));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
+app.get(['/health', '/api/v1/health'], (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0' });
 });
 

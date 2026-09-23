@@ -12,6 +12,7 @@ services:
       - postgresql-1ffd_default
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
       - "traefik.http.routers.pharmax-backend.rule=Host(`pharmax-api.santiently.com`)"
       - "traefik.http.routers.pharmax-backend.entrypoints=https"
       - "traefik.http.routers.pharmax-backend.tls=true"
