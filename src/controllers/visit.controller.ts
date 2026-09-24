@@ -160,6 +160,30 @@ export const visitController = {
     }
   },
 
+  // Reschedule Visit: Shift to tomorrow or new date
+  async reschedule(req: Request, res: Response) {
+    try {
+      const { newDate, reason } = req.body;
+      if (!newDate) return res.status(400).json({ success: false, message: 'newDate is required' });
+      const visit = await visitService.reschedule((req.params.id as string), req.user!.userId, { newDate, reason });
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // Cancel Visit
+  async cancel(req: Request, res: Response) {
+    try {
+      const { cancelReason } = req.body;
+      if (!cancelReason) return res.status(400).json({ success: false, message: 'cancelReason is required' });
+      const visit = await visitService.cancel((req.params.id as string), req.user!.userId, { cancelReason });
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
   async approve(req: Request, res: Response) {
     try {
       const visit = await visitService.approve((req.params.id as string), req.user!.userId);

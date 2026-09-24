@@ -23,6 +23,8 @@ router.patch('/:id/submit-report', auditLog('SUBMIT_REPORT','Visit'), visitContr
 router.patch('/:id/draft-report',  auditLog('DRAFT_REPORT', 'Visit'), visitController.saveDraftReport);
 router.patch('/:id/next-call',  auditLog('NEXT_CALL','Visit'),     visitController.nextCall);
 router.patch('/:id/mark-missed', auditLog('MARK_MISSED','Visit'),  visitController.markMissed);
+router.patch('/:id/reschedule',  auditLog('RESCHEDULE', 'Visit'),  visitController.reschedule);
+router.patch('/:id/cancel',      auditLog('CANCEL',     'Visit'),  visitController.cancel);
 router.patch('/:id/notes',                                         visitController.updateNotes);
 router.patch('/:id/approve',    requireManager, auditLog('APPROVE','Visit'), visitController.approve);
 router.patch('/:id/reject',     requireManager, auditLog('REJECT', 'Visit'), visitController.reject);

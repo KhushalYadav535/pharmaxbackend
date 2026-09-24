@@ -87,6 +87,15 @@ export interface MarkMissedInput {
   missedReason: string;
 }
 
+export interface RescheduleVisitInput {
+  newDate: string;
+  reason?: string;
+}
+
+export interface CancelVisitInput {
+  cancelReason: string;
+}
+
 // ── Visit Service ─────────────────────────────────────────────────────────────
 
 export const visitService = {
@@ -109,7 +118,6 @@ export const visitService = {
         { plannedDate: { gte: fDate, lte: tDate } },
         { checkInTime: { gte: fDate, lte: tDate } },
         { checkOutTime: { gte: fDate, lte: tDate } },
-        { createdAt: { gte: fDate, lte: tDate } },
       ];
     }
 
@@ -161,7 +169,6 @@ export const visitService = {
         { plannedDate: { gte: fDate, lte: tDate } },
         { checkInTime: { gte: fDate, lte: tDate } },
         { checkOutTime: { gte: fDate, lte: tDate } },
-        { createdAt: { gte: fDate, lte: tDate } },
       ];
     }
 
@@ -537,7 +544,7 @@ export const visitService = {
       ? Math.max(1, Math.round((checkOutTime.getTime() - visit.checkInTime.getTime()) / 60000))
       : 1);
 
-    return prisma.visit.update({
+    const updatedVisit = await prisma.visit.update({
       where: { id },
       data: {
         status: VisitStatus.REPORTED,
@@ -555,6 +562,52 @@ export const visitService = {
         productsDiscussed: data.productsDiscussed || [],
       },
     });
+
+    // Auto-schedule next follow-up visit in calendar so visit plan is automatically filled
+    if (data.nextFollowUpDate) {
+      try {
+        const followUpDate = new Date(data.nextFollowUpDate);
+        if (!isNaN(followUpDate.getTime())) {
+          const startOfDay = new Date(followUpDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(followUpDate);
+          endOfDay.setHours(23, 59, 59, 999);
+
+          const existingFollowUp = await prisma.visit.findFirst({
+            where: {
+              userId,
+              plannedDate: { gte: startOfDay, lte: endOfDay },
+              ...(visit.doctorId && { doctorId: visit.doctorId }),
+              ...(visit.retailerId && { retailerId: visit.retailerId }),
+              ...(visit.hospitalId && { hospitalId: visit.hospitalId }),
+              ...(visit.distributorId && { distributorId: visit.distributorId }),
+            },
+          });
+
+          if (!existingFollowUp) {
+            await prisma.visit.create({
+              data: {
+                userId,
+                visitType: visit.visitType,
+                plannedDate: followUpDate,
+                doctorId: visit.doctorId,
+                retailerId: visit.retailerId,
+                hospitalId: visit.hospitalId,
+                distributorId: visit.distributorId,
+                status: VisitStatus.PLANNED,
+                notes: data.followUpAction ? `Follow-up: ${data.followUpAction}` : 'Follow-up visit planned from previous report',
+                visitObjective: data.followUpAction ? [data.followUpAction] : [],
+                productsDiscussed: data.productsDiscussed || [],
+              },
+            });
+          }
+        }
+      } catch (scheduleErr) {
+        console.error('Failed to auto-schedule follow-up visit in calendar:', scheduleErr);
+      }
+    }
+
+    return updatedVisit;
   },
 
   // ── Save Draft Report — Partial updates, remains in REPORT_PENDING ────────
@@ -630,6 +683,61 @@ export const visitService = {
     });
   },
 
+  // ── Reschedule Visit — shift to tomorrow / new date ───────────────────────
+  async reschedule(id: string, userId: string, input: RescheduleVisitInput) {
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (!visit) throw new Error('Visit not found');
+    if (visit.userId !== userId) throw new Error('Access denied');
+
+    if (!['PLANNED', 'NAVIGATING', 'MISSED'].includes(visit.status)) {
+      throw new Error(`Cannot reschedule: visit is currently in status ${visit.status}.`);
+    }
+
+    const newPlannedDate = new Date(input.newDate);
+    if (isNaN(newPlannedDate.getTime())) {
+      throw new Error('Valid newDate is required to reschedule visit.');
+    }
+
+    const oldDateStr = visit.plannedDate ? new Date(visit.plannedDate).toLocaleDateString('en-IN') : 'original date';
+    const noteEntry = input.reason
+      ? `[Rescheduled from ${oldDateStr}]: ${input.reason}`
+      : `[Rescheduled from ${oldDateStr} to ${newPlannedDate.toLocaleDateString('en-IN')}]`;
+
+    const updatedNotes = visit.notes ? `${visit.notes}\n${noteEntry}` : noteEntry;
+
+    return prisma.visit.update({
+      where: { id },
+      data: {
+        plannedDate: newPlannedDate,
+        status: VisitStatus.PLANNED,
+        notes: updatedNotes,
+        missedReason: null,
+      },
+    });
+  },
+
+  // ── Cancel Visit ─────────────────────────────────────────────────────────
+  async cancel(id: string, userId: string, input: CancelVisitInput) {
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (!visit) throw new Error('Visit not found');
+    if (visit.userId !== userId) throw new Error('Access denied');
+
+    if (!['PLANNED', 'NAVIGATING'].includes(visit.status)) {
+      throw new Error(`Cannot cancel: visit is currently in status ${visit.status}.`);
+    }
+    if (!input.cancelReason) {
+      throw new Error('A reason is required when cancelling a visit.');
+    }
+
+    return prisma.visit.update({
+      where: { id },
+      data: {
+        status: VisitStatus.CANCELLED,
+        missedReason: input.cancelReason,
+      },
+    });
+  },
+
   async approve(id: string, approverId: string) {
     return prisma.visit.update({
       where: { id },
@@ -664,7 +772,6 @@ export const visitService = {
         { plannedDate: { gte: start, lte: end } },
         { checkInTime: { gte: start, lte: end } },
         { checkOutTime: { gte: start, lte: end } },
-        { createdAt: { gte: start, lte: end } },
       ],
     };
 

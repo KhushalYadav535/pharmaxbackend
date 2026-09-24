@@ -266,7 +266,6 @@ router.get('/day-end-summary', async (req, res) => {
         { checkInTime: { gte: windowStart, lte: windowEnd } },
         { checkOutTime: { gte: windowStart, lte: windowEnd } },
         { reportSubmittedAt: { gte: windowStart, lte: windowEnd } },
-        { createdAt: { gte: windowStart, lte: windowEnd } },
       ],
     };
 
