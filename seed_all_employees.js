@@ -259,6 +259,7 @@ async function main() {
           passwordHash, // Reset/set password to password123
           hqId: hq.id,
           isActive: true,
+          deletedAt: null,
           phone: emp.phone,
         }
       });

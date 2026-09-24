@@ -96,8 +96,10 @@ async function main() {
     if (areaMap[cfg.name]) continue;
     let area = await prisma.area.findFirst({
       where: {
-        hqId: burhanpurHq.id,
-        name: { equals: cfg.name, mode: 'insensitive' }
+        OR: [
+          { areaCode: cfg.code },
+          { hqId: burhanpurHq.id, name: { equals: cfg.name, mode: 'insensitive' } }
+        ]
       }
     });
 

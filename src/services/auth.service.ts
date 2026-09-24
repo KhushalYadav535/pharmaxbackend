@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { env } from '../config/env';
 
@@ -27,27 +28,22 @@ const generateRefreshToken = (userId: string) =>
 
 export const authService = {
   async login(input: LoginInput) {
-    const email = input.email.trim().toLowerCase();
-    let user = await prisma.user.findUnique({
-      where: { email },
+    const identifier = input.email.trim().toLowerCase();
+    const rawInput = input.email.trim();
+
+    // Standard login by Email or Employee ID
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: identifier, mode: 'insensitive' } },
+          { employeeId: { equals: rawInput, mode: 'insensitive' } },
+        ],
+      },
       include: {
         hq: { select: { id: true, name: true, code: true } },
         territories: { include: { territory: true } },
       },
     });
-
-    // Fallback alias for Shubham / Subham Patil
-    if (!user && (email === 'shubhampatil255726@gmail.com' || email === 'subhampatil255726@gmail.com')) {
-      const altEmail = email === 'shubhampatil255726@gmail.com' ? 'subhampatil255726@gmail.com' : 'shubhampatil255726@gmail.com';
-      user = await prisma.user.findUnique({
-        where: { email: altEmail },
-        include: {
-          hq: { select: { id: true, name: true, code: true } },
-          territories: { include: { territory: true } },
-        },
-      });
-    }
-
 
     if (!user || !user.isActive || user.deletedAt) {
       throw new Error('Invalid credentials');

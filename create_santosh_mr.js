@@ -57,7 +57,8 @@ async function main() {
         department: 'Sales & Commercial',
         passwordHash,
         hqId: indoreHq.id,
-        isActive: true
+        isActive: true,
+        deletedAt: null
       }
     });
     console.log(`🔄 Updated existing user: ${user.firstName} ${user.lastName} (${user.email})`);
