@@ -73,8 +73,10 @@ async function main() {
   // 2. Setup / Verify Sub-Area for Nagpur HQ
   let nagpurArea = await prisma.area.findFirst({
     where: {
-      hqId: nagpurHq.id,
-      name: { equals: 'Nagpur Central Area', mode: 'insensitive' }
+      OR: [
+        { areaCode: 'AREA-NAGP' },
+        { hqId: nagpurHq.id, name: { equals: 'Nagpur Central Area', mode: 'insensitive' } }
+      ]
     }
   });
 
@@ -92,19 +94,20 @@ async function main() {
     });
     console.log(`📍 Created new Area: ${nagpurArea.name} (Code: ${nagpurArea.areaCode}, ID: ${nagpurArea.id})`);
   } else {
-    // Ensure district and state are set
+    // Ensure district, state, and hqId are set
     await prisma.area.update({
       where: { id: nagpurArea.id },
-      data: { district: 'Nagpur', state: 'Maharashtra', pinCode: '440001' }
+      data: { hqId: nagpurHq.id, district: 'Nagpur', state: 'Maharashtra', pinCode: '440001', isActive: true }
     });
     console.log(`📍 Found & updated Area: ${nagpurArea.name} (ID: ${nagpurArea.id})`);
   }
 
-  // 3. Remove initial placeholder mock doctors in Nagpur HQ if they have 0 visits
   // 3. Remove initial placeholder mock doctors in Nagpur HQ safely
   const dummyDocIds = [
     '757f8507-e638-41fe-954b-958452c7579d', // Rajesh Sharma
     '1e0910f3-0720-4b0a-b34b-58035bce4b3e', // Sunil Verma
+    'a5c925e3-2516-4964-a645-897e00c02fea', // Rajesh Sharma
+    '63068842-8d07-445d-821c-2b44d63e3e60', // Sunil Verma
   ];
   for (const dummyId of dummyDocIds) {
     try {
