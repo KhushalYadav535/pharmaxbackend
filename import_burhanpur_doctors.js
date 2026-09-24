@@ -21,9 +21,50 @@ async function main() {
   });
 
   if (!burhanpurHq) {
-    throw new Error('❌ Burhanpur Headquarter (HQ-BURHANPUR) territory not found in database!');
+    burhanpurHq = await prisma.territory.create({
+      data: {
+        code: 'HQ-BURHANPUR',
+        name: 'Burhanpur',
+        district: 'Burhanpur',
+        state: 'Madhya Pradesh',
+        region: 'MP-South',
+        zone: 'Central',
+        pinCode: '450331'
+      }
+    });
+    console.log(`✅ Created new Burhanpur Headquarter: ${burhanpurHq.name} (Code: ${burhanpurHq.code}, ID: ${burhanpurHq.id})`);
+  } else {
+    console.log(`✅ Found Burhanpur HQ: ${burhanpurHq.name} (Code: ${burhanpurHq.code}, ID: ${burhanpurHq.id})`);
   }
-  console.log(`✅ Found Burhanpur HQ: ${burhanpurHq.name} (Code: ${burhanpurHq.code}, ID: ${burhanpurHq.id})`);
+
+  // Ensure Burhanpur MR (Shubham / Subham Patil) is linked to Burhanpur HQ
+  try {
+    const burhanpurMrs = await prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { in: ['subhampatil255726@gmail.com', 'shubhampatil255726@gmail.com'], mode: 'insensitive' } },
+          { employeeId: { in: ['EMP009', 'EMP015'] } },
+          { lastName: { contains: 'PATIL', mode: 'insensitive' } }
+        ]
+      }
+    });
+    for (const mr of burhanpurMrs) {
+      await prisma.user.update({
+        where: { id: mr.id },
+        data: { hqId: burhanpurHq.id }
+      });
+      const existingUt = await prisma.userTerritory.findFirst({
+        where: { userId: mr.id, territoryId: burhanpurHq.id }
+      });
+      if (!existingUt) {
+        await prisma.userTerritory.create({
+          data: { userId: mr.id, territoryId: burhanpurHq.id }
+        });
+      }
+    }
+  } catch (err) {
+    console.log('⚠️ Note on linking Burhanpur MR:', err.message);
+  }
 
   // 2. Setup Areas for Burhanpur HQ
   const areaConfigs = [

@@ -33,11 +33,8 @@ jobs:
             echo "=== Syncing database schema with Prisma ==="
             docker compose exec -T pharmax-backend npx prisma db push || true
 
-            echo "=== Importing Nagpur Doctors and Headquarter Data ==="
-            docker compose exec -T pharmax-backend node import_nagpur_doctors.js || true
-
-            echo "=== Configuring MR Santosh Telang (Indore HQ) ==="
-            docker compose exec -T pharmax-backend node create_santosh_mr.js || true
+            echo "=== Importing All Headquarters & Doctors Data (Indore, Ujjain, Burhanpur, Khargone, Nagpur) ==="
+            docker compose exec -T pharmax-backend node import_all_doctors.js || true
 
             echo "=== Cleaning unused docker images ==="
             docker image prune -f

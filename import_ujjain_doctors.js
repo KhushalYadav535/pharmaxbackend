@@ -21,9 +21,50 @@ async function main() {
   });
 
   if (!ujjainHq) {
-    throw new Error('❌ Ujjain Headquarter (HQ-UJJAIN) territory not found in database!');
+    ujjainHq = await prisma.territory.create({
+      data: {
+        code: 'HQ-UJJAIN',
+        name: 'Ujjain',
+        district: 'Ujjain',
+        state: 'Madhya Pradesh',
+        region: 'MP-West',
+        zone: 'Central',
+        pinCode: '456001'
+      }
+    });
+    console.log(`✅ Created new Ujjain Headquarter: ${ujjainHq.name} (Code: ${ujjainHq.code}, ID: ${ujjainHq.id})`);
+  } else {
+    console.log(`✅ Found Ujjain HQ: ${ujjainHq.name} (Code: ${ujjainHq.code}, ID: ${ujjainHq.id})`);
   }
-  console.log(`✅ Found Ujjain HQ: ${ujjainHq.name} (Code: ${ujjainHq.code}, ID: ${ujjainHq.id})`);
+
+  // Ensure Ujjain MR (Sameer Khan) is linked to Ujjain HQ
+  try {
+    const ujjainMr = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: 'mohdsameer0724@gmail.com', mode: 'insensitive' } },
+          { employeeId: 'EMP008' },
+          { firstName: { contains: 'SAMEER', mode: 'insensitive' } }
+        ]
+      }
+    });
+    if (ujjainMr) {
+      await prisma.user.update({
+        where: { id: ujjainMr.id },
+        data: { hqId: ujjainHq.id }
+      });
+      const existingUt = await prisma.userTerritory.findFirst({
+        where: { userId: ujjainMr.id, territoryId: ujjainHq.id }
+      });
+      if (!existingUt) {
+        await prisma.userTerritory.create({
+          data: { userId: ujjainMr.id, territoryId: ujjainHq.id }
+        });
+      }
+    }
+  } catch (err) {
+    console.log('⚠️ Note on linking Ujjain MR:', err.message);
+  }
 
   // 2. Setup Areas for Ujjain HQ
   const areaConfigs = [

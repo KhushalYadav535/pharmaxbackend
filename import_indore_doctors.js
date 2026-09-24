@@ -21,9 +21,49 @@ async function main() {
   });
 
   if (!indoreHq) {
-    throw new Error('❌ Indore Headquarter (HQ-INDORE) territory not found in database!');
+    indoreHq = await prisma.territory.create({
+      data: {
+        code: 'HQ-INDORE',
+        name: 'Indore',
+        district: 'Indore',
+        state: 'Madhya Pradesh',
+        region: 'MP-West',
+        zone: 'Central',
+        pinCode: '452001'
+      }
+    });
+    console.log(`✅ Created new Indore Headquarter: ${indoreHq.name} (Code: ${indoreHq.code}, ID: ${indoreHq.id})`);
+  } else {
+    console.log(`✅ Found Indore HQ: ${indoreHq.name} (Code: ${indoreHq.code}, ID: ${indoreHq.id})`);
   }
-  console.log(`✅ Found Indore HQ: ${indoreHq.name} (Code: ${indoreHq.code}, ID: ${indoreHq.id})`);
+
+  // Ensure Indore MRs are linked to Indore HQ
+  try {
+    const indoreMrs = await prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { in: ['sourabhuplawdiya@gmail.com', 'shyammba.dangi@gmail.com', 'santoshtelang@gmail.com'], mode: 'insensitive' } },
+          { employeeId: { in: ['EMP006', 'EMP007'] } }
+        ]
+      }
+    });
+    for (const mr of indoreMrs) {
+      await prisma.user.update({
+        where: { id: mr.id },
+        data: { hqId: indoreHq.id }
+      });
+      const existingUt = await prisma.userTerritory.findFirst({
+        where: { userId: mr.id, territoryId: indoreHq.id }
+      });
+      if (!existingUt) {
+        await prisma.userTerritory.create({
+          data: { userId: mr.id, territoryId: indoreHq.id }
+        });
+      }
+    }
+  } catch (err) {
+    console.log('⚠️ Note on linking Indore MRs:', err.message);
+  }
 
   // 2. Setup Sub-Areas / Beats for Indore HQ
   const areaConfigs = [

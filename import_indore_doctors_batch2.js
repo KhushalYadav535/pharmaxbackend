@@ -21,9 +21,21 @@ async function main() {
   });
 
   if (!indoreHq) {
-    throw new Error('❌ Indore Headquarter (HQ-INDORE) territory not found in database!');
+    indoreHq = await prisma.territory.create({
+      data: {
+        code: 'HQ-INDORE',
+        name: 'Indore',
+        district: 'Indore',
+        state: 'Madhya Pradesh',
+        region: 'MP-West',
+        zone: 'Central',
+        pinCode: '452001'
+      }
+    });
+    console.log(`✅ Created new Indore Headquarter: ${indoreHq.name} (Code: ${indoreHq.code}, ID: ${indoreHq.id})`);
+  } else {
+    console.log(`✅ Found Indore HQ: ${indoreHq.name} (Code: ${indoreHq.code}, ID: ${indoreHq.id})`);
   }
-  console.log(`✅ Found Indore HQ: ${indoreHq.name} (Code: ${indoreHq.code}, ID: ${indoreHq.id})`);
 
   // 2. Setup Sub-Areas / Beats for Indore HQ
   const areaConfigs = [

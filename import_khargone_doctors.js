@@ -23,9 +23,50 @@ async function main() {
   });
 
   if (!khargoneHq) {
-    throw new Error('❌ Khargone Headquarter (HQ-KHARGOAN) territory not found in database!');
+    khargoneHq = await prisma.territory.create({
+      data: {
+        code: 'HQ-KHARGOAN',
+        name: 'Khargoan',
+        district: 'Khargone',
+        state: 'Madhya Pradesh',
+        region: 'MP-South',
+        zone: 'Central',
+        pinCode: '451001'
+      }
+    });
+    console.log(`✅ Created new Khargone Headquarter: ${khargoneHq.name} (Code: ${khargoneHq.code}, ID: ${khargoneHq.id})`);
+  } else {
+    console.log(`✅ Found Khargone HQ: ${khargoneHq.name} (Code: ${khargoneHq.code}, ID: ${khargoneHq.id})`);
   }
-  console.log(`✅ Found Khargone HQ: ${khargoneHq.name} (Code: ${khargoneHq.code}, ID: ${khargoneHq.id})`);
+
+  // Ensure Khargone MR (Jitendra Singh Sengar) is linked to Khargone HQ
+  try {
+    const khargoneMr = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: 'jitu.thakur04@gmail.com', mode: 'insensitive' } },
+          { employeeId: 'EMP010' },
+          { firstName: { contains: 'JITENDRA', mode: 'insensitive' } }
+        ]
+      }
+    });
+    if (khargoneMr) {
+      await prisma.user.update({
+        where: { id: khargoneMr.id },
+        data: { hqId: khargoneHq.id }
+      });
+      const existingUt = await prisma.userTerritory.findFirst({
+        where: { userId: khargoneMr.id, territoryId: khargoneHq.id }
+      });
+      if (!existingUt) {
+        await prisma.userTerritory.create({
+          data: { userId: khargoneMr.id, territoryId: khargoneHq.id }
+        });
+      }
+    }
+  } catch (err) {
+    console.log('⚠️ Note on linking Khargone MR:', err.message);
+  }
 
   // 2. Setup Sub-Areas / Beats for Khargone HQ
   const areaConfigs = [
