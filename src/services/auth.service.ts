@@ -115,7 +115,23 @@ export const authService = {
       include: { user: true },
     });
 
-    if (!storedToken || storedToken.isRevoked || storedToken.expiresAt < new Date()) {
+    if (!storedToken || storedToken.expiresAt < new Date()) {
+      throw new Error('Invalid refresh token');
+    }
+
+    if (storedToken.isRevoked) {
+      // Grace period for concurrent mobile requests: if rotated within last 30s, reuse active token
+      const recentThreshold = new Date(Date.now() - 30 * 1000);
+      if (storedToken.createdAt >= recentThreshold) {
+        const activeToken = await prisma.refreshToken.findFirst({
+          where: { userId: storedToken.userId, isRevoked: false, expiresAt: { gt: new Date() } },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (activeToken) {
+          const newAccessToken = generateAccessToken(storedToken.user.id, storedToken.user.role, storedToken.user.email);
+          return { accessToken: newAccessToken, refreshToken: activeToken.token };
+        }
+      }
       throw new Error('Invalid refresh token');
     }
 
