@@ -12,23 +12,25 @@ async function main() {
 
   try {
     const existingDoctorCount = await prisma.doctor.count();
-    console.log(`📊 Current doctor count in database: ${existingDoctorCount}`);
+    const existingUserCount = await prisma.user.count({ where: { isActive: true } });
+    console.log(`📊 Current in DB: ${existingDoctorCount} doctors, ${existingUserCount} active employees`);
 
     // If already seeded and not forced, skip immediately!
-    if (existingDoctorCount >= 500 && !isForce) {
-      console.log(`\n⚡ Doctors already exist in database (${existingDoctorCount} doctors found).`);
-      console.log(`⏭️  Skipping doctor seeding to keep deployment fast.`);
+    if (existingDoctorCount >= 500 && existingUserCount >= 15 && !isForce) {
+      console.log(`\n⚡ Data already exists in database (${existingDoctorCount} doctors, ${existingUserCount} employees).`);
+      console.log(`⏭️  Skipping seeding to keep deployment fast.`);
       console.log(`💡 Tip: If you ever want to forcefully re-seed, run with: node import_all_doctors.js --force\n`);
       process.exit(0);
     }
 
     if (isForce) {
-      console.log('⚠️ --force flag detected: Running full doctor sync regardless of current count.\n');
+      console.log('⚠️ --force flag detected: Running full sync regardless of current count.\n');
     } else {
-      console.log('🌱 Database is missing doctors. Starting one-time master seed...\n');
+      console.log('🌱 Database is missing doctors or employees. Starting master seed...\n');
     }
 
     const scripts = [
+      { name: 'Biocros Employees & Logins Setup', file: 'seed_all_employees.js' },
       { name: 'Nagpur Doctors (Vidarbha)', file: 'import_nagpur_doctors.js' },
       { name: 'Indore Doctors - Batch 1', file: 'import_indore_doctors.js' },
       { name: 'Indore Doctors - Batch 2', file: 'import_indore_doctors_batch2.js' },
