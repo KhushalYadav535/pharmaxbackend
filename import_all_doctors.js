@@ -29,10 +29,13 @@ async function main() {
         ]
       }
     });
-    console.log(`📊 Current in DB: ${existingDoctorCount} doctors (${burhanpurDocCount} Burhanpur, ${nagpurDocCount} Nagpur), ${existingUserCount} active employees`);
+    const santoshExists = await prisma.user.findFirst({
+      where: { email: { equals: 'santoshtelang@gmail.com', mode: 'insensitive' } }
+    });
+    console.log(`📊 Current in DB: ${existingDoctorCount} doctors (${burhanpurDocCount} Burhanpur, ${nagpurDocCount} Nagpur), ${existingUserCount} active employees (Santosh: ${santoshExists ? 'YES' : 'NO'})`);
 
-    // If already seeded and both Burhanpur & Nagpur are present, skip!
-    if (existingDoctorCount >= 550 && existingUserCount >= 16 && burhanpurDocCount >= 50 && nagpurDocCount >= 50 && !isForce) {
+    // If already seeded and both Burhanpur & Nagpur are present and Santosh exists, skip!
+    if (existingDoctorCount >= 550 && existingUserCount >= 17 && santoshExists && burhanpurDocCount >= 50 && nagpurDocCount >= 50 && !isForce) {
       console.log(`\n⚡ Data already exists in database (${existingDoctorCount} doctors, ${existingUserCount} employees).`);
       console.log(`⏭️  Skipping seeding to keep deployment fast.`);
       console.log(`💡 Tip: If you ever want to forcefully re-seed, run with: node import_all_doctors.js --force\n`);

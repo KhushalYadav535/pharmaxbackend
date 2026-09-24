@@ -217,6 +217,14 @@ export async function runBiocrosSeed() {
       phone: '+91 98236 63800',
       role: UserRole.MR,
     },
+    {
+      empCode: 'EMP016',
+      name: 'SANTOSH TELANG',
+      hq: 'INDORE',
+      email: 'santoshtelang@gmail.com',
+      phone: '+91 98765 00000',
+      role: UserRole.MR,
+    },
   ];
 
   const userMap: { [email: string]: any } = {};
