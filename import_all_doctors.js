@@ -13,10 +13,18 @@ async function main() {
   try {
     const existingDoctorCount = await prisma.doctor.count();
     const existingUserCount = await prisma.user.count({ where: { isActive: true } });
-    console.log(`📊 Current in DB: ${existingDoctorCount} doctors, ${existingUserCount} active employees`);
+    const burhanpurDocCount = await prisma.doctor.count({
+      where: {
+        OR: [
+          { hq: { code: 'HQ-BURHANPUR' } },
+          { territory: { code: 'HQ-BURHANPUR' } }
+        ]
+      }
+    });
+    console.log(`📊 Current in DB: ${existingDoctorCount} doctors (${burhanpurDocCount} Burhanpur), ${existingUserCount} active employees`);
 
-    // If already seeded and not forced, skip immediately!
-    if (existingDoctorCount >= 500 && existingUserCount >= 15 && !isForce) {
+    // If already seeded and Burhanpur is present, skip!
+    if (existingDoctorCount >= 550 && existingUserCount >= 16 && burhanpurDocCount >= 50 && !isForce) {
       console.log(`\n⚡ Data already exists in database (${existingDoctorCount} doctors, ${existingUserCount} employees).`);
       console.log(`⏭️  Skipping seeding to keep deployment fast.`);
       console.log(`💡 Tip: If you ever want to forcefully re-seed, run with: node import_all_doctors.js --force\n`);
