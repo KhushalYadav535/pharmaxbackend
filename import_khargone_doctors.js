@@ -100,8 +100,10 @@ async function main() {
     if (areaMap[cfg.name]) continue;
     let area = await prisma.area.findFirst({
       where: {
-        hqId: khargoneHq.id,
-        name: { equals: cfg.name, mode: 'insensitive' }
+        OR: [
+          { areaCode: cfg.code },
+          { hqId: khargoneHq.id, name: { equals: cfg.name, mode: 'insensitive' } }
+        ]
       }
     });
 
@@ -119,7 +121,11 @@ async function main() {
       });
       console.log(`📍 Created new Area: ${area.name} (Code: ${area.areaCode}, ID: ${area.id})`);
     } else {
-      console.log(`📍 Found existing Area: ${area.name} (ID: ${area.id})`);
+      area = await prisma.area.update({
+        where: { id: area.id },
+        data: { hqId: khargoneHq.id, district: cfg.district, state: cfg.state, pinCode: cfg.pinCode, isActive: true }
+      });
+      console.log(`📍 Found & updated Area: ${area.name} (ID: ${area.id})`);
     }
     areaMap[cfg.name] = area;
   }
