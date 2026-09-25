@@ -775,7 +775,7 @@ export const visitService = {
       ],
     };
 
-    const [totalToday, reported, reportPending, missed, active, visits] = await Promise.all([
+    const [totalToday, reported, reportPending, missed, cancelled, active, visits] = await Promise.all([
       prisma.visit.count({ where: todayMatchWhere }),
       // §4.1: A visit is completed ONLY after report is submitted
       prisma.visit.count({ where: { ...todayMatchWhere, status: 'REPORTED' } }),
@@ -783,6 +783,7 @@ export const visitService = {
       // CHECKED_OUT retained in query for backward compatibility with existing records.
       prisma.visit.count({ where: { ...todayMatchWhere, status: { in: ['CHECKED_OUT', 'REPORT_PENDING'] } } }),
       prisma.visit.count({ where: { ...todayMatchWhere, status: 'MISSED' } }),
+      prisma.visit.count({ where: { ...todayMatchWhere, status: 'CANCELLED' } }),
       prisma.visit.count({ where: { ...todayMatchWhere, status: { in: ACTIVE_VISIT_STATUSES as any } } }),
       prisma.visit.findMany({
         where: todayMatchWhere,
@@ -800,7 +801,7 @@ export const visitService = {
       others:    visits.filter((v) => !['DOCTOR', 'HOSPITAL', 'RETAILER', 'STOCKIST', 'DISTRIBUTOR'].includes(v.visitType)).length,
     };
 
-    const remaining = Math.max(0, planned - reported - missed);
+    const remaining = Math.max(0, planned - reported - missed - cancelled);
     const estimatedTravelKm = planned * 5;
     const estimatedDurationMins = planned * 45;
 
@@ -809,6 +810,7 @@ export const visitService = {
       completed: reported,    // §4.1: completed = REPORTED only
       reportPending,          // CHECKED_OUT + REPORT_PENDING
       missed,
+      cancelled,
       active,
       remaining,
       breakdown,
