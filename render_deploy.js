@@ -74,5 +74,14 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n10. Running Wardha doctor list import...');
+  execSync('node import_wardha_doctors.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to import Wardha doctors!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
+
 

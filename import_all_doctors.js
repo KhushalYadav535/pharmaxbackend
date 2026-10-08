@@ -29,13 +29,21 @@ async function main() {
         ]
       }
     });
+    const wardhaDocCount = await prisma.doctor.count({
+      where: {
+        OR: [
+          { hq: { code: 'HQ-WARDHA' } },
+          { territory: { code: 'HQ-WARDHA' } }
+        ]
+      }
+    });
     const santoshExists = await prisma.user.findFirst({
       where: { email: { equals: 'santoshtelang@gmail.com', mode: 'insensitive' } }
     });
-    console.log(`📊 Current in DB: ${existingDoctorCount} doctors (${burhanpurDocCount} Burhanpur, ${nagpurDocCount} Nagpur), ${existingUserCount} active employees (Santosh: ${santoshExists ? 'YES' : 'NO'})`);
+    console.log(`📊 Current in DB: ${existingDoctorCount} doctors (${burhanpurDocCount} Burhanpur, ${nagpurDocCount} Nagpur, ${wardhaDocCount} Wardha), ${existingUserCount} active employees (Santosh: ${santoshExists ? 'YES' : 'NO'})`);
 
-    // If already seeded and both Burhanpur & Nagpur are present and Santosh exists, skip!
-    if (existingDoctorCount >= 540 && existingUserCount >= 17 && santoshExists && burhanpurDocCount >= 50 && nagpurDocCount >= 50 && !isForce) {
+    // If already seeded and Burhanpur, Nagpur & Wardha are present and Santosh exists, skip!
+    if (existingDoctorCount >= 700 && existingUserCount >= 17 && santoshExists && burhanpurDocCount >= 50 && nagpurDocCount >= 50 && wardhaDocCount >= 150 && !isForce) {
       console.log(`\n⚡ Data already exists in database (${existingDoctorCount} doctors, ${existingUserCount} employees).`);
       console.log(`⏭️  Skipping seeding to keep deployment fast.`);
       console.log(`💡 Tip: If you ever want to forcefully re-seed, run with: node import_all_doctors.js --force\n`);
@@ -56,6 +64,7 @@ async function main() {
       { name: 'Ujjain Doctors', file: 'import_ujjain_doctors.js' },
       { name: 'Burhanpur Doctors', file: 'import_burhanpur_doctors.js' },
       { name: 'Khargone Doctors', file: 'import_khargone_doctors.js' },
+      { name: 'Wardha Doctors (Vidarbha)', file: 'import_wardha_doctors.js' },
       { name: 'Santosh Telang MR Setup', file: 'create_santosh_mr.js' },
       { name: 'Approve All Records', file: 'approve_existing.js' },
     ];
