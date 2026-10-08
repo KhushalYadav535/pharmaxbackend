@@ -7,60 +7,76 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 export async function runBiocrosSeed() {
-  console.log('🚀 [BIOCROS] Starting complete database purge & Biocros migration...');
+  // ── PRODUCTION PROTECTION GUARD ───────────────────────────────────────────
+  // If the database already has products or users, NEVER run destructive purge/reseed!
+  const existingProductCount = await prisma.product.count();
+  const existingUserCount = await prisma.user.count();
 
-  // ── 1. PURGE EXISTING DATA (REVERSE FK ORDER) ──────────────────────────────
-  console.log('🧹 Purging legacy / test data...');
-  await prisma.dayStateLog.deleteMany();
-  await prisma.auditLog.deleteMany();
-  await prisma.retailAudit.deleteMany();
-  await prisma.contentView.deleteMany();
-  await prisma.quizAttempt.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.orderItem.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.sampleDistribution.deleteMany();
-  await prisma.visitAttachment.deleteMany();
-  await prisma.visit.deleteMany();
-  await prisma.dailyVisitReport.deleteMany();
-  await prisma.tourPlanDay.deleteMany();
-  await prisma.tourPlan.deleteMany();
-  await prisma.attendance.deleteMany();
-  await prisma.leave.deleteMany();
-  await prisma.expense.deleteMany();
-  await prisma.task.deleteMany();
-  await prisma.survey.deleteMany();
-  await prisma.target.deleteMany();
-  await prisma.doctorProduct.deleteMany();
-  await prisma.hospitalProduct.deleteMany();
-  await prisma.retailerProduct.deleteMany();
-  await prisma.cFAProduct.deleteMany();
-  await prisma.stockistProduct.deleteMany();
-  await prisma.stockReport.deleteMany();
-  await prisma.doctorTag.deleteMany();
-  await prisma.doctor.deleteMany();
-  await prisma.hospital.deleteMany();
-  await prisma.retailer.deleteMany();
-  await prisma.stockist.deleteMany();
-  await prisma.distributor.deleteMany();
-  await prisma.cFA.deleteMany();
-  await prisma.beat.deleteMany();
-  await prisma.area.deleteMany();
-  await prisma.interior.deleteMany();
-  await prisma.location.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.sampleProduct.deleteMany();
-  await prisma.tradeScheme.deleteMany();
-  await prisma.scheme.deleteMany();
-  await prisma.trainingModule.deleteMany();
-  await prisma.quiz.deleteMany();
-  await prisma.content.deleteMany();
-  await prisma.campaign.deleteMany();
-  await prisma.userTerritory.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.territory.deleteMany();
-  console.log('✅ Database cleanly purged.');
+  if (existingProductCount > 0 || existingUserCount > 0) {
+    console.log(`🛡️ [PRODUCTION SAFETY GUARD ACTIVE]`);
+    console.log(`   Database already contains ${existingProductCount} products and ${existingUserCount} users.`);
+    console.log(`   ⏭️ Skipping Biocros purge seed to protect live data, custom prices, orders, and visits.`);
+    return;
+  }
+
+  console.log('🚀 [BIOCROS] Starting initial database seed for fresh database...');
+
+  // ── 1. PURGE EXISTING DATA (ONLY IF EXPLICITLY OVERRIDDEN) ─────────────────
+  if (process.env.ALLOW_DATABASE_PURGE === 'I_CONFIRM_DELETE_EVERYTHING') {
+    console.log('⚠️ Purging legacy / test data (ALLOW_DATABASE_PURGE is active)...');
+    await prisma.dayStateLog.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.retailAudit.deleteMany();
+    await prisma.contentView.deleteMany();
+    await prisma.quizAttempt.deleteMany();
+    await prisma.notification.deleteMany();
+    await prisma.orderItem.deleteMany();
+    await prisma.order.deleteMany();
+    await prisma.sampleDistribution.deleteMany();
+    await prisma.visitAttachment.deleteMany();
+    await prisma.visit.deleteMany();
+    await prisma.dailyVisitReport.deleteMany();
+    await prisma.tourPlanDay.deleteMany();
+    await prisma.tourPlan.deleteMany();
+    await prisma.attendance.deleteMany();
+    await prisma.leave.deleteMany();
+    await prisma.expense.deleteMany();
+    await prisma.task.deleteMany();
+    await prisma.survey.deleteMany();
+    await prisma.target.deleteMany();
+    await prisma.doctorProduct.deleteMany();
+    await prisma.hospitalProduct.deleteMany();
+    await prisma.retailerProduct.deleteMany();
+    await prisma.cFAProduct.deleteMany();
+    await prisma.stockistProduct.deleteMany();
+    await prisma.stockReport.deleteMany();
+    await prisma.doctorTag.deleteMany();
+    await prisma.doctor.deleteMany();
+    await prisma.hospital.deleteMany();
+    await prisma.retailer.deleteMany();
+    await prisma.stockist.deleteMany();
+    await prisma.distributor.deleteMany();
+    await prisma.cFA.deleteMany();
+    await prisma.beat.deleteMany();
+    await prisma.area.deleteMany();
+    await prisma.interior.deleteMany();
+    await prisma.location.deleteMany();
+    await prisma.product.deleteMany();
+    await prisma.sampleProduct.deleteMany();
+    await prisma.tradeScheme.deleteMany();
+    await prisma.scheme.deleteMany();
+    await prisma.trainingModule.deleteMany();
+    await prisma.quiz.deleteMany();
+    await prisma.content.deleteMany();
+    await prisma.campaign.deleteMany();
+    await prisma.userTerritory.deleteMany();
+    await prisma.refreshToken.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.territory.deleteMany();
+    console.log('✅ Database cleanly purged.');
+  } else {
+    console.log('🔒 Purge disabled: Database in safe non-destructive mode.');
+  }
 
   // ── 2. SEED TERRITORIES (HEADQUARTERS FROM EMPLOYEE LIST) ──────────────────
   console.log('📍 Seeding Headquarters & Territories...');

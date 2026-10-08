@@ -26,13 +26,9 @@ try {
   process.exit(1);
 }
 
-try {
-  console.log('\n4. Running Biocros data migration & purge seed...');
-  execSync('npx tsx prisma/seed_biocros.ts', { stdio: 'inherit' });
-} catch (e) {
-  console.error('CRITICAL: Failed to run Biocros data migration!');
-  process.exit(1);
-}
+// Step 4 removed: Biocros purge seed must NOT run during deployments to prevent
+// wiping custom product prices, live orders, visits, or employee data.
+console.log('\n4. Biocros purge seed skipped (live production data protected).');
 
 try {
   console.log('\n5. Running Ujjain doctor list import...');

@@ -41,8 +41,8 @@ export const visitController = {
 
   async updateNotes(req: Request, res: Response) {
     try {
-      const { notes } = req.body;
-      const visit = await visitService.updateNotes((req.params.id as string), notes);
+      const { notes, reminderDate } = req.body;
+      const visit = await visitService.updateNotes((req.params.id as string), notes, req.user!.userId, reminderDate);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -102,6 +102,27 @@ export const visitController = {
   async detail(req: Request, res: Response) {
     try {
       const visit = await visitService.detail((req.params.id as string), req.user!.userId);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // Pause Visit: active states → PAUSED
+  async pause(req: Request, res: Response) {
+    try {
+      const { reason } = req.body;
+      const visit = await visitService.pause((req.params.id as string), req.user!.userId, reason);
+      res.json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // Resume Visit: PAUSED → PREPARING
+  async resume(req: Request, res: Response) {
+    try {
+      const visit = await visitService.resume((req.params.id as string), req.user!.userId);
       res.json({ success: true, data: visit });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });

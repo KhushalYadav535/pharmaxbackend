@@ -18,6 +18,8 @@ router.patch('/:id/check-in',   auditLog('CHECK_IN','Visit'),      visitControll
 router.patch('/:id/prepare',    auditLog('PREPARE','Visit'),       visitController.prepare);
 router.patch('/:id/engage',     auditLog('ENGAGE','Visit'),        visitController.engage);
 router.patch('/:id/detail',     auditLog('DETAIL','Visit'),        visitController.detail);
+router.patch('/:id/pause',      auditLog('PAUSE', 'Visit'),        visitController.pause);
+router.patch('/:id/resume',     auditLog('RESUME','Visit'),        visitController.resume);
 router.patch('/:id/check-out',  auditLog('CHECK_OUT','Visit'),     visitController.checkOut);
 router.patch('/:id/submit-report', auditLog('SUBMIT_REPORT','Visit'), visitController.submitReport);
 router.patch('/:id/draft-report',  auditLog('DRAFT_REPORT', 'Visit'), visitController.saveDraftReport);

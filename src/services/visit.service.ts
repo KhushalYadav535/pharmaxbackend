@@ -276,10 +276,64 @@ export const visitService = {
     return { ...visit, lastVisit, visitHistory };
   },
 
-  async updateNotes(id: string, notes: string) {
-    const visit = await prisma.visit.findUnique({ where: { id } });
+  async updateNotes(id: string, notes: string, userId?: string, reminderDate?: string) {
+    const visit = await prisma.visit.findUnique({
+      where: { id },
+      include: { doctor: { select: { id: true, firstName: true, lastName: true } } },
+    });
     if (!visit) throw new Error('Visit not found');
     const updatedNotes = visit.notes ? `${visit.notes}\n\n${notes}` : notes;
+
+    // Check if this is a reminder
+    if (notes.includes('[REMINDER]') || reminderDate) {
+      try {
+        const cleanReminderText = notes.replace('[REMINDER]', '').trim();
+        const effectiveUserId = userId || visit.userId;
+        const docName = visit.doctor ? `Dr. ${visit.doctor.firstName} ${visit.doctor.lastName}` : 'Customer';
+        const dueDate = reminderDate ? new Date(reminderDate) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        // 1. Create a Task so it shows up in MR's Tasks module
+        await prisma.task.create({
+          data: {
+            title: `Follow-up: ${docName}`,
+            type: 'CALL',
+            priority: 'HIGH',
+            assignedToId: effectiveUserId,
+            createdById: effectiveUserId,
+            notes: cleanReminderText,
+            dueDate,
+            status: 'NOT_STARTED',
+          },
+        });
+
+        // 2. Create in-app Notification
+        await prisma.notification.create({
+          data: {
+            toUserId: effectiveUserId,
+            fromUserId: effectiveUserId,
+            title: `⏰ Follow-up Reminder: ${docName}`,
+            body: cleanReminderText,
+            type: 'VISIT_REMINDER',
+            data: { visitId: id, doctorId: visit.doctorId },
+          },
+        });
+      } catch (reminderErr) {
+        console.warn('Failed to auto-create task/notification for reminder:', reminderErr);
+      }
+    }
+
+    // If linked to a doctor, also sync to doctor.notes for long-term CRM dossier
+    if (visit.doctorId) {
+      try {
+        const doc = await prisma.doctor.findUnique({ where: { id: visit.doctorId }, select: { notes: true } });
+        const docNote = `[Visit Note ${new Date().toLocaleDateString('en-IN')}]: ${notes}`;
+        const updatedDocNotes = doc?.notes ? `${doc.notes}\n${docNote}` : docNote;
+        await prisma.doctor.update({ where: { id: visit.doctorId }, data: { notes: updatedDocNotes } });
+      } catch (docNoteErr) {
+        console.warn('Failed to sync note to doctor dossier:', docNoteErr);
+      }
+    }
+
     return prisma.visit.update({ where: { id }, data: { notes: updatedNotes } });
   },
 
@@ -490,15 +544,76 @@ export const visitService = {
     return prisma.visit.update({ where: { id }, data: { status: ['CHECKED_IN', 'PREPARING', 'ENGAGING'].includes(visit.status) ? VisitStatus.DETAILING : visit.status } });
   },
 
+  // ── Pause Visit — CHECKED_IN/PREPARING/ENGAGING/DETAILING → PAUSED ──────────
+  async pause(id: string, userId: string, reason?: string) {
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (!visit) throw new Error('Visit not found');
+    if (visit.userId !== userId) throw new Error('Access denied');
+
+    const activeStatuses = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING'];
+    if (!activeStatuses.includes(visit.status)) {
+      throw new Error(`Cannot pause visit: current status is ${visit.status}. Must be in progress.`);
+    }
+
+    const pausedAt = new Date();
+    const timeStr = pausedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    const noteEntry = reason
+      ? `[Visit Paused at ${timeStr}]: ${reason}`
+      : `[Visit Paused at ${timeStr}]`;
+    const updatedNotes = visit.notes ? `${visit.notes}\n${noteEntry}` : noteEntry;
+
+    return prisma.visit.update({
+      where: { id },
+      data: {
+        status: VisitStatus.PAUSED,
+        pausedAt,
+        pauseReason: reason || null,
+        notes: updatedNotes,
+      },
+    });
+  },
+
+  // ── Resume Visit — PAUSED → PREPARING ──────────────────────────────────────
+  async resume(id: string, userId: string) {
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (!visit) throw new Error('Visit not found');
+    if (visit.userId !== userId) throw new Error('Access denied');
+
+    if (visit.status !== VisitStatus.PAUSED) {
+      throw new Error(`Cannot resume visit: current status is ${visit.status}. Must be PAUSED.`);
+    }
+
+    const now = new Date();
+    const pausedMins = visit.pausedAt
+      ? Math.max(1, Math.round((now.getTime() - new Date(visit.pausedAt).getTime()) / 60000))
+      : 0;
+    const totalPausedMinutes = (visit.totalPausedMinutes || 0) + pausedMins;
+
+    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    const noteEntry = `[Visit Resumed at ${timeStr}] (Duration paused: ${pausedMins} mins)`;
+    const updatedNotes = visit.notes ? `${visit.notes}\n${noteEntry}` : noteEntry;
+
+    return prisma.visit.update({
+      where: { id },
+      data: {
+        status: VisitStatus.PREPARING,
+        pausedAt: null,
+        pauseReason: null,
+        totalPausedMinutes,
+        notes: updatedNotes,
+      },
+    });
+  },
+
   // ── §13 Check-out — active states → REPORT_PENDING (§2.2) ─────────────────
   async checkOut(id: string, userId: string, input: CheckOutInput) {
     const visit = await prisma.visit.findUnique({ where: { id } });
     if (!visit) throw new Error('Visit not found');
     if (visit.userId !== userId) throw new Error('Access denied');
 
-    const allowedStatuses = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING'];
+    const allowedStatuses = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'];
     if (!allowedStatuses.includes(visit.status)) {
-      throw new Error(`Cannot check out: visit is currently ${visit.status}. Must be CHECKED_IN, PREPARING, ENGAGING, or DETAILING.`);
+      throw new Error(`Cannot check out: visit is currently ${visit.status}. Must be CHECKED_IN, PREPARING, ENGAGING, DETAILING, or PAUSED.`);
     }
 
     const checkOutTime = new Date();
@@ -661,35 +776,52 @@ export const visitService = {
     });
   },
 
-  // ── §23 Mark Missed — PLANNED/NAVIGATING → MISSED ────────────────────────
+  // ── §23 Mark Missed — PLANNED/NAVIGATING/active/PAUSED → MISSED ────────
   async markMissed(id: string, userId: string, input: MarkMissedInput) {
     const visit = await prisma.visit.findUnique({ where: { id } });
     if (!visit) throw new Error('Visit not found');
     if (visit.userId !== userId) throw new Error('Access denied');
 
-    if (!['PLANNED', 'NAVIGATING'].includes(visit.status)) {
+    const allowedStatuses = ['PLANNED', 'NAVIGATING', 'CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'];
+    if (!allowedStatuses.includes(visit.status)) {
       throw new Error(`Cannot mark as missed: visit is currently ${visit.status}.`);
     }
     if (!input.missedReason) {
       throw new Error('A reason is required when marking a visit as missed.');
     }
 
+    const wasCheckedIn = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'].includes(visit.status);
+    const checkOutTime = wasCheckedIn ? new Date() : visit.checkOutTime;
+    const durationMinutes = (wasCheckedIn && visit.checkInTime)
+      ? Math.max(1, Math.round((checkOutTime!.getTime() - new Date(visit.checkInTime).getTime()) / 60000))
+      : visit.durationMinutes;
+
+    const noteEntry = wasCheckedIn
+      ? `[Marked Missed after Check-in]: ${input.missedReason}`
+      : `[Marked Missed]: ${input.missedReason}`;
+    const updatedNotes = visit.notes ? `${visit.notes}\n${noteEntry}` : noteEntry;
+
     return prisma.visit.update({
       where: { id },
       data: {
         status: VisitStatus.MISSED,
         missedReason: input.missedReason,
+        checkOutTime,
+        durationMinutes,
+        notes: updatedNotes,
+        pausedAt: null,
       },
     });
   },
 
-  // ── Reschedule Visit — shift to tomorrow / new date ───────────────────────
+  // ── Reschedule Visit — shift to same day / tomorrow / new date ─────────────
   async reschedule(id: string, userId: string, input: RescheduleVisitInput) {
     const visit = await prisma.visit.findUnique({ where: { id } });
     if (!visit) throw new Error('Visit not found');
     if (visit.userId !== userId) throw new Error('Access denied');
 
-    if (!['PLANNED', 'NAVIGATING', 'MISSED'].includes(visit.status)) {
+    const allowedStatuses = ['PLANNED', 'NAVIGATING', 'MISSED', 'CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'];
+    if (!allowedStatuses.includes(visit.status)) {
       throw new Error(`Cannot reschedule: visit is currently in status ${visit.status}.`);
     }
 
@@ -698,10 +830,12 @@ export const visitService = {
       throw new Error('Valid newDate is required to reschedule visit.');
     }
 
-    const oldDateStr = visit.plannedDate ? new Date(visit.plannedDate).toLocaleDateString('en-IN') : 'original date';
+    const wasCheckedIn = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'].includes(visit.status);
+    const oldDateStr = visit.plannedDate ? new Date(visit.plannedDate).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'original date';
+    const newDateStr = newPlannedDate.toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
     const noteEntry = input.reason
-      ? `[Rescheduled from ${oldDateStr}]: ${input.reason}`
-      : `[Rescheduled from ${oldDateStr} to ${newPlannedDate.toLocaleDateString('en-IN')}]`;
+      ? `[Rescheduled${wasCheckedIn ? ' after Check-In' : ''} from ${oldDateStr} to ${newDateStr}]: ${input.reason}`
+      : `[Rescheduled${wasCheckedIn ? ' after Check-In' : ''} from ${oldDateStr} to ${newDateStr}]`;
 
     const updatedNotes = visit.notes ? `${visit.notes}\n${noteEntry}` : noteEntry;
 
@@ -712,28 +846,56 @@ export const visitService = {
         status: VisitStatus.PLANNED,
         notes: updatedNotes,
         missedReason: null,
+        // Clear active check-in tracking if it was checked in, so MR can start fresh at rescheduled time
+        ...(wasCheckedIn && {
+          checkInTime: null,
+          checkOutTime: null,
+          checkInLat: null,
+          checkInLng: null,
+          checkInAddress: null,
+          checkInGpsAccuracy: null,
+          durationMinutes: null,
+          pausedAt: null,
+          pauseReason: null,
+        }),
       },
     });
   },
 
-  // ── Cancel Visit ─────────────────────────────────────────────────────────
+  // ── Cancel Visit — PLANNED/NAVIGATING/active/PAUSED → CANCELLED ───────────
   async cancel(id: string, userId: string, input: CancelVisitInput) {
     const visit = await prisma.visit.findUnique({ where: { id } });
     if (!visit) throw new Error('Visit not found');
     if (visit.userId !== userId) throw new Error('Access denied');
 
-    if (!['PLANNED', 'NAVIGATING'].includes(visit.status)) {
+    const allowedStatuses = ['PLANNED', 'NAVIGATING', 'CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'];
+    if (!allowedStatuses.includes(visit.status)) {
       throw new Error(`Cannot cancel: visit is currently in status ${visit.status}.`);
     }
     if (!input.cancelReason) {
       throw new Error('A reason is required when cancelling a visit.');
     }
 
+    const wasCheckedIn = ['CHECKED_IN', 'PREPARING', 'ENGAGING', 'DETAILING', 'PAUSED'].includes(visit.status);
+    const checkOutTime = wasCheckedIn ? new Date() : visit.checkOutTime;
+    const durationMinutes = (wasCheckedIn && visit.checkInTime)
+      ? Math.max(1, Math.round((checkOutTime!.getTime() - new Date(visit.checkInTime).getTime()) / 60000))
+      : visit.durationMinutes;
+
+    const noteEntry = wasCheckedIn
+      ? `[Cancelled after Check-in]: ${input.cancelReason}`
+      : `[Cancelled]: ${input.cancelReason}`;
+    const updatedNotes = visit.notes ? `${visit.notes}\n${noteEntry}` : noteEntry;
+
     return prisma.visit.update({
       where: { id },
       data: {
         status: VisitStatus.CANCELLED,
         missedReason: input.cancelReason,
+        checkOutTime,
+        durationMinutes,
+        notes: updatedNotes,
+        pausedAt: null,
       },
     });
   },

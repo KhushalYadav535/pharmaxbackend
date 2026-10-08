@@ -41,6 +41,7 @@ enum VisitStatus {
   PREPARING
   ENGAGING
   DETAILING
+  PAUSED
   CHECKED_OUT
   REPORT_PENDING
   REPORTED
@@ -912,6 +913,11 @@ model Visit {
 
   // Missed call
   missedReason String?
+
+  // Pause visit tracking
+  pausedAt           DateTime?
+  pauseReason        String?
+  totalPausedMinutes Int?      @default(0)
 
   // Target entity (polymorphic)
   doctorId      String?

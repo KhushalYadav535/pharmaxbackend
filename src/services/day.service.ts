@@ -30,6 +30,7 @@ export const ACTIVE_VISIT_STATUSES = [
   'PREPARING',
   'ENGAGING',
   'DETAILING',
+  'PAUSED',
 ] as const;
 
 // ── Day State Engine ──────────────────────────────────────────────────────────

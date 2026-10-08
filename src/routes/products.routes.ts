@@ -10,9 +10,9 @@ router.use(authenticate);
 
 router.get('/', productController.list);
 router.get('/:id', productController.getById);
-router.post('/', auditLog('CREATE', 'Product'), requireRole(UserRole.SUPER_ADMIN), productController.create);
-router.put('/:id', auditLog('UPDATE', 'Product'), requireRole(UserRole.SUPER_ADMIN), productController.update);
-router.delete('/:id', auditLog('DELETE', 'Product'), requireRole(UserRole.SUPER_ADMIN), productController.deactivate);
+router.post('/', auditLog('CREATE', 'Product'), requireRole(UserRole.SUPER_ADMIN, UserRole.SALES_ADMIN, UserRole.PRODUCT_MANAGER), productController.create);
+router.put('/:id', auditLog('UPDATE', 'Product'), requireRole(UserRole.SUPER_ADMIN, UserRole.SALES_ADMIN, UserRole.PRODUCT_MANAGER), productController.update);
+router.delete('/:id', auditLog('DELETE', 'Product'), requireRole(UserRole.SUPER_ADMIN, UserRole.SALES_ADMIN, UserRole.PRODUCT_MANAGER), productController.deactivate);
 
 export default router;
 
