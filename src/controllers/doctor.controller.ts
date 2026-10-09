@@ -101,6 +101,10 @@ export const doctorController = {
 
   async delete(req: Request, res: Response) {
     try {
+      if (req.user && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user.role)) {
+        return res.status(403).json({ success: false, message: 'Access denied: Only administrators can delete doctors.' });
+      }
+
       await doctorService.softDelete(req.params.id as string as string);
       res.json({ success: true, message: 'Doctor deleted successfully' });
     } catch (err: any) {
