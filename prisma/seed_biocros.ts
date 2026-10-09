@@ -723,8 +723,9 @@ export async function runBiocrosSeed() {
       },
     });
 
-    // Create Doctors (skip Ujjain, Burhanpur & Indore dummy doctors as real doctors are imported from Excel lists)
-    if (hq.name !== 'Ujjain' && hq.name !== 'Burhanpur' && hq.name !== 'Indore') {
+    // Create Doctors (skip headquarters where real doctors are imported from Excel lists)
+    const skipDummyDocHqs = ['Ujjain', 'Burhanpur', 'Indore', 'Khargoan', 'Khargone', 'Nagpur', 'Wardha'];
+    if (!skipDummyDocHqs.includes(hq.name)) {
       await prisma.doctor.create({
         data: {
           firstName: 'Rajesh',

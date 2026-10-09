@@ -78,6 +78,14 @@ try {
   process.exit(1);
 }
 
+try {
+  console.log('\n11. Running Nagpur doctor list import...');
+  execSync('node import_nagpur_doctors.js', { stdio: 'inherit' });
+} catch (e) {
+  console.error('CRITICAL: Failed to import Nagpur doctors!');
+  process.exit(1);
+}
+
 console.log('\n--- RENDER DEPLOYMENT SCRIPT COMPLETED SUCCESSFULLY ---');
 
 
