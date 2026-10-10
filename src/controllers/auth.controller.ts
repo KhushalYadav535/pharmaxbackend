@@ -4,7 +4,14 @@ import { authService } from '../services/auth.service';
 export const authController = {
   async login(req: Request, res: Response) {
     try {
-      const result = await authService.login(req.body);
+      const clientInfo = {
+        ipAddress: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        deviceModel: req.body.deviceModel,
+        platform: req.body.platform,
+        appVersion: req.body.appVersion,
+      };
+      const result = await authService.login(req.body, clientInfo);
       res.json({ success: true, data: result });
     } catch (err: any) {
       res.status(401).json({ success: false, message: err.message });
@@ -34,8 +41,9 @@ export const authController = {
 
   async logout(req: Request, res: Response) {
     try {
-      const { refreshToken } = req.body;
-      if (refreshToken) await authService.logout(refreshToken);
+      const { refreshToken, reason } = req.body;
+      const userId = (req as any).user?.userId;
+      await authService.logout(refreshToken, userId, reason);
       res.json({ success: true, message: 'Logged out successfully' });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -54,10 +62,15 @@ export const authController = {
 
   async heartbeat(req: Request, res: Response) {
     try {
-      const result = await authService.heartbeat(req.user!.userId);
+      const clientInfo = {
+        ipAddress: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent'],
+      };
+      const result = await authService.heartbeat(req.user!.userId, clientInfo);
       res.json({ success: true, data: result });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
   },
 };
+

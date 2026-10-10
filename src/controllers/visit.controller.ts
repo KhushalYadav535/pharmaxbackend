@@ -51,8 +51,19 @@ export const visitController = {
 
   async create(req: Request, res: Response) {
     try {
-      const visit = await visitService.create(req.body, req.user!.userId);
+      const isManagerOrAdmin = ['SUPER_ADMIN', 'SALES_ADMIN', 'ADMIN', 'NSM', 'ZM', 'RSM', 'ASM'].includes(req.user!.role);
+      const targetUserId = (isManagerOrAdmin && req.body.userId) ? req.body.userId : req.user!.userId;
+      const visit = await visitService.create(req.body, targetUserId, isManagerOrAdmin);
       res.status(201).json({ success: true, data: visit });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  async bulkPlan(req: Request, res: Response) {
+    try {
+      const result = await visitService.bulkPlan(req.body, req.user!.userId, req.user!.role);
+      res.status(201).json({ success: true, data: result });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
     }

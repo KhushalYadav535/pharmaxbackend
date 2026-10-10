@@ -42,6 +42,9 @@ import dailyReportRoutes from './routes/dailyreports.routes';
 import interiorRoutes from './routes/interiors.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import dayRoutes from './routes/day.routes';
+import auditRoutes from './routes/audit.routes';
+import notificationRoutes from './routes/notifications.routes';
+import mrUsageRoutes from './routes/mr-usage.routes';
 
 const app = express();
 
@@ -106,6 +109,10 @@ app.use(`${API}/daily-reports`, dailyReportRoutes);
 app.use(`${API}/interiors`, interiorRoutes);
 app.use(`${API}/dashboard`, dashboardRoutes);
 app.use(`${API}/day`, dayRoutes);
+app.use(`${API}/audit-logs`, auditRoutes);
+app.use(`${API}/notifications`, notificationRoutes);
+app.use(`${API}/mr-usage`, mrUsageRoutes);
+
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

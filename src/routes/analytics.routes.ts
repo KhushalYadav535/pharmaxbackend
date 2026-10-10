@@ -404,6 +404,88 @@ router.get('/day-end-summary', async (req, res) => {
   }
 });
 
-// Duplicate day-end-summary removed — see consolidated route above (line 217)
+// Doctor Frequency Compliance & Zero-Call Doctors
+router.get('/doctor-frequency-compliance', async (req, res) => {
+  try {
+    const { territoryId, hqId } = req.query;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const docWhere: any = { deletedAt: null, isActive: true };
+    if (territoryId && territoryId !== 'ALL') docWhere.territoryId = territoryId as string;
+    if (hqId && hqId !== 'ALL') docWhere.hqId = hqId as string;
+
+    const [allDoctors, monthVisits] = await Promise.all([
+      prisma.doctor.findMany({
+        where: docWhere,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          doctorCode: true,
+          specialty: true,
+          classification: true,
+          category: true,
+          city: true,
+          phone: true,
+          territory: { select: { name: true } },
+          hq: { select: { name: true } },
+        },
+        orderBy: [{ lastName: 'asc' }],
+      }),
+      prisma.visit.groupBy({
+        by: ['doctorId'],
+        where: {
+          plannedDate: { gte: monthStart, lte: monthEnd },
+          status: { in: ['COMPLETED', 'REPORTED', 'DETAILING'] },
+          doctorId: { not: null },
+        },
+        _count: { doctorId: true },
+      }),
+    ]);
+
+    const visitCountMap = new Map<string, number>();
+    monthVisits.forEach((v) => {
+      if (v.doctorId) visitCountMap.set(v.doctorId, v._count.doctorId);
+    });
+
+    const zeroCallDoctors: any[] = [];
+    const regularDoctors: any[] = [];
+    const overVisitedDoctors: any[] = [];
+
+    allDoctors.forEach((doc) => {
+      const visitsCount = visitCountMap.get(doc.id) || 0;
+      const enriched = { ...doc, visitsThisMonth: visitsCount };
+      if (visitsCount === 0) {
+        zeroCallDoctors.push(enriched);
+      } else if (visitsCount >= 4) {
+        overVisitedDoctors.push(enriched);
+        regularDoctors.push(enriched);
+      } else {
+        regularDoctors.push(enriched);
+      }
+    });
+
+    const totalDoctors = allDoctors.length;
+    const coveredDoctors = regularDoctors.length;
+    const coverageRate = totalDoctors > 0 ? Math.round((coveredDoctors / totalDoctors) * 100) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalDoctors,
+        coveredDoctors,
+        zeroCallCount: zeroCallDoctors.length,
+        coverageRate,
+        overVisitedCount: overVisitedDoctors.length,
+        zeroCallDoctors: zeroCallDoctors.slice(0, 50),
+        overVisitedDoctors: overVisitedDoctors.slice(0, 20),
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 export default router;

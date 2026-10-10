@@ -53,6 +53,8 @@ const EMPLOYEE_SELECT = {
   profilePhoto: true,
   isActive: true,
   lastLoginAt: true,
+  lastActiveAt: true,
+  lastLogoutAt: true,
   createdAt: true,
   updatedAt: true,
   managerId: true,
@@ -709,9 +711,11 @@ export const employeeService = {
         status = 'OFFLINE';
       }
 
-      // Calculate Session Duration
+      // Calculate Session Duration & History
       let sessionMinutes = 0;
       let formattedDuration = '0m';
+      let sessionSummaryText = 'Not logged in today';
+
       if (status === 'ONLINE' || status === 'AWAY') {
         const sessionStart = lastLogin || (att?.checkInTime ? new Date(att.checkInTime) : lastActive);
         if (sessionStart) {
@@ -719,12 +723,28 @@ export const employeeService = {
           const h = Math.floor(sessionMinutes / 60);
           const m = sessionMinutes % 60;
           formattedDuration = h > 0 ? `${h}h ${m}m` : `${m}m`;
+          sessionSummaryText = `Online for ${formattedDuration}`;
         }
-      } else if (lastLogin && lastLogout && lastLogout > lastLogin && (nowTime - lastLogout.getTime()) < 24 * 60 * 60 * 1000) {
+      } else if (att?.checkInTime && att?.checkOutTime) {
+        // Clocked out with attendance record today
+        const start = new Date(att.checkInTime);
+        const end = new Date(att.checkOutTime);
+        sessionMinutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+        const h = Math.floor(sessionMinutes / 60);
+        const m = sessionMinutes % 60;
+        formattedDuration = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        sessionSummaryText = `Was active for ${formattedDuration} (Clocked Out)`;
+      } else if (lastLogin && lastLogout && lastLogout > lastLogin) {
         sessionMinutes = Math.max(0, Math.round((lastLogout.getTime() - lastLogin.getTime()) / 60000));
         const h = Math.floor(sessionMinutes / 60);
         const m = sessionMinutes % 60;
         formattedDuration = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        sessionSummaryText = `Was logged in for ${formattedDuration}`;
+      } else if (lastActive) {
+        const elapsedSinceActive = Math.round((nowTime - lastActive.getTime()) / 60000);
+        const h = Math.floor(elapsedSinceActive / 60);
+        const m = elapsedSinceActive % 60;
+        sessionSummaryText = elapsedSinceActive < 60 ? `Last active ${m}m ago` : `Last active ${h}h ago`;
       }
 
       // Unplanned Call Flags
@@ -754,8 +774,13 @@ export const employeeService = {
         lastLoginAt: mr.lastLoginAt,
         lastActiveAt: mr.lastActiveAt,
         lastLogoutAt: mr.lastLogoutAt,
+        loginTime: lastLogin ? lastLogin.toISOString() : (att?.checkInTime ? new Date(att.checkInTime).toISOString() : null),
+        logoutTime: lastLogout ? lastLogout.toISOString() : (att?.checkOutTime ? new Date(att.checkOutTime).toISOString() : null),
+        checkInTime: att?.checkInTime ? new Date(att.checkInTime).toISOString() : null,
+        checkOutTime: att?.checkOutTime ? new Date(att.checkOutTime).toISOString() : null,
         sessionMinutes,
         formattedDuration,
+        sessionSummaryText,
         dayStatus: att?.dayStatus || 'NOT_STARTED',
         todayMetrics: {
           totalVisits: totalVisitsCount,

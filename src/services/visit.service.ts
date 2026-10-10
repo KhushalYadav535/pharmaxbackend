@@ -48,10 +48,12 @@ function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: num
 export interface CreateVisitInput {
   visitType: VisitType;
   plannedDate: string;
+  userId?: string;
   doctorId?: string;
   hospitalId?: string;
   retailerId?: string;
   distributorId?: string;
+  stockistId?: string;
   productsDiscussed?: string[];
   notes?: string;
   nextFollowUpDate?: string;
@@ -337,33 +339,38 @@ export const visitService = {
     return prisma.visit.update({ where: { id }, data: { notes: updatedNotes } });
   },
 
-  async create(data: CreateVisitInput, userId: string) {
-    // Gap #4 fix (§29): Block new visit creation when today's day is already CLOSED
-    const today = todayStart();
-    const todayAttendance = await prisma.attendance.findFirst({
-      where: { userId, date: today },
-      select: { dayStatus: true },
-    });
-    if (todayAttendance?.dayStatus === 'CLOSED') {
-      throw new Error('Your day is closed. You cannot plan new visits for today.');
+  async create(data: CreateVisitInput, userId: string, isManagerOrAdmin: boolean = false) {
+    const targetUserId = (isManagerOrAdmin && data.userId) ? data.userId : userId;
+
+    if (!isManagerOrAdmin) {
+      // Gap #4 fix (§29): Block new visit creation when today's day is already CLOSED
+      const today = todayStart();
+      const todayAttendance = await prisma.attendance.findFirst({
+        where: { userId: targetUserId, date: today },
+        select: { dayStatus: true },
+      });
+      if (todayAttendance?.dayStatus === 'CLOSED') {
+        throw new Error('Your day is closed. You cannot plan new visits for today.');
+      }
     }
 
     const visit = await prisma.visit.create({
       data: {
         visitType: data.visitType,
         plannedDate: new Date(data.plannedDate),
-        userId,
+        userId: targetUserId,
         doctorId: data.doctorId,
         hospitalId: data.hospitalId,
         retailerId: data.retailerId,
         distributorId: data.distributorId,
+        stockistId: data.stockistId,
         productsDiscussed: data.productsDiscussed || [],
         notes: data.notes,
         nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : undefined,
         isUnplanned: data.isUnplanned || false,
         unplannedReason: data.unplannedReason,
         status: VisitStatus.PLANNED,
-        approvalStatus: ApprovalStatus.PENDING,
+        approvalStatus: isManagerOrAdmin ? ApprovalStatus.APPROVED : ApprovalStatus.PENDING,
       },
     });
 
@@ -978,6 +985,53 @@ export const visitService = {
       breakdown,
       estimatedTravelKm,
       estimatedDurationMins,
+    };
+  },
+
+  async bulkPlan(
+    data: { userId?: string; hqId?: string; visits: Array<any> },
+    reqUserId: string,
+    reqRole: string
+  ) {
+    const isManagerOrAdmin = ['SUPER_ADMIN', 'SALES_ADMIN', 'ADMIN', 'NSM', 'ZM', 'RSM', 'ASM'].includes(reqRole);
+    const targetUserId = (isManagerOrAdmin && data.userId) ? data.userId : reqUserId;
+
+    if (!data.visits || !Array.isArray(data.visits) || data.visits.length === 0) {
+      throw new Error('No visits provided to plan');
+    }
+
+    // Verify target user exists
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, firstName: true, lastName: true, hqId: true, role: true },
+    });
+    if (!targetUser) throw new Error('Target Medical Representative not found');
+
+    const createdVisits = await prisma.$transaction(
+      data.visits.map((v) =>
+        prisma.visit.create({
+          data: {
+            visitType: v.visitType || 'DOCTOR',
+            plannedDate: new Date(v.plannedDate),
+            userId: targetUserId,
+            doctorId: v.doctorId || undefined,
+            hospitalId: v.hospitalId || undefined,
+            retailerId: v.retailerId || undefined,
+            distributorId: v.distributorId || undefined,
+            stockistId: v.stockistId || undefined,
+            notes: v.notes || undefined,
+            status: VisitStatus.PLANNED,
+            approvalStatus: isManagerOrAdmin ? ApprovalStatus.APPROVED : ApprovalStatus.PENDING,
+          },
+        })
+      )
+    );
+
+    return {
+      count: createdVisits.length,
+      targetUserId,
+      repName: `${targetUser.firstName} ${targetUser.lastName}`,
+      visits: createdVisits,
     };
   },
 };

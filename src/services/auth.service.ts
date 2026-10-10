@@ -20,6 +20,14 @@ export interface RegisterInput {
   employeeId?: string;
 }
 
+export interface ClientMetadata {
+  ipAddress?: string;
+  userAgent?: string;
+  deviceModel?: string;
+  platform?: string;
+  appVersion?: string;
+}
+
 const generateAccessToken = (userId: string, role: string, email: string) =>
   jwt.sign({ userId, role, email }, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions);
 
@@ -27,7 +35,7 @@ const generateRefreshToken = (userId: string) =>
   jwt.sign({ userId, jti: uuidv4() }, env.REFRESH_TOKEN_SECRET, { expiresIn: env.REFRESH_TOKEN_EXPIRES_IN } as jwt.SignOptions);
 
 export const authService = {
-  async login(input: LoginInput) {
+  async login(input: LoginInput, clientInfo?: ClientMetadata) {
     const identifier = input.email.trim().toLowerCase();
     const rawInput = input.email.trim();
 
@@ -64,6 +72,40 @@ export const authService = {
       where: { id: user.id },
       data: { lastLoginAt: new Date(), lastActiveAt: new Date() },
     });
+
+    // Close any previous active session for this user
+    await prisma.userSession.updateMany({
+      where: { userId: user.id, status: 'ACTIVE' },
+      data: { status: 'TIMED_OUT', logoutReason: 'NEW_LOGIN' },
+    }).catch(() => {});
+
+    // Create session record
+    const session = await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        token: refreshToken,
+        loginAt: new Date(),
+        lastActiveAt: new Date(),
+        status: 'ACTIVE',
+        ipAddress: clientInfo?.ipAddress,
+        userAgent: clientInfo?.userAgent,
+        deviceModel: clientInfo?.deviceModel,
+        platform: clientInfo?.platform || 'ANDROID',
+        appVersion: clientInfo?.appVersion || '1.0.4',
+      },
+    }).catch(() => null);
+
+    // Audit log entry
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'LOGIN',
+        entity: 'AUTH',
+        entityId: session?.id,
+        ipAddress: clientInfo?.ipAddress,
+        userAgent: clientInfo?.userAgent,
+      },
+    }).catch(() => {});
 
     return {
       accessToken,
@@ -137,11 +179,25 @@ export const authService = {
 
     if (!storedToken.user.isActive) throw new Error('User inactive');
 
+    const now = new Date();
     // Update lastActiveAt on token refresh
     await prisma.user.update({
       where: { id: storedToken.user.id },
-      data: { lastActiveAt: new Date() },
+      data: { lastActiveAt: now },
     }).catch(() => {});
+
+    // Also update current active session duration
+    const activeSession = await prisma.userSession.findFirst({
+      where: { userId: storedToken.user.id, status: 'ACTIVE' },
+      orderBy: { loginAt: 'desc' },
+    });
+    if (activeSession) {
+      const durationMinutes = Math.max(1, Math.round((now.getTime() - activeSession.loginAt.getTime()) / 60000));
+      await prisma.userSession.update({
+        where: { id: activeSession.id },
+        data: { lastActiveAt: now, durationMinutes },
+      }).catch(() => {});
+    }
 
     // Rotate refresh token
     await prisma.refreshToken.update({ where: { id: storedToken.id }, data: { isRevoked: true } });
@@ -157,32 +213,101 @@ export const authService = {
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
   },
 
-  async logout(token: string) {
-    const stored = await prisma.refreshToken.findUnique({
-      where: { token },
-      select: { userId: true },
+  async logout(token?: string, userId?: string, reason?: string) {
+    const now = new Date();
+    let storedUserId = userId;
+
+    if (token) {
+      const stored = await prisma.refreshToken.findUnique({
+        where: { token },
+        select: { userId: true },
+      });
+      if (stored?.userId) storedUserId = stored.userId;
+
+      await prisma.refreshToken.updateMany({
+        where: { token },
+        data: { isRevoked: true },
+      }).catch(() => {});
+    }
+
+    // Find matching active or recent session
+    const session = await prisma.userSession.findFirst({
+      where: {
+        OR: [
+          token ? { token } : undefined,
+          storedUserId ? { userId: storedUserId, status: 'ACTIVE' } : undefined,
+        ].filter(Boolean) as any,
+      },
+      orderBy: { loginAt: 'desc' },
     });
 
-    await prisma.refreshToken.updateMany({
-      where: { token },
-      data: { isRevoked: true },
-    });
+    if (session) {
+      const durationMinutes = Math.max(1, Math.round((now.getTime() - session.loginAt.getTime()) / 60000));
+      await prisma.userSession.update({
+        where: { id: session.id },
+        data: {
+          logoutAt: now,
+          lastActiveAt: now,
+          status: 'LOGGED_OUT',
+          logoutReason: reason || 'MANUAL',
+          durationMinutes,
+        },
+      }).catch(() => {});
+    }
 
-    if (stored?.userId) {
+    if (storedUserId) {
       await prisma.user.update({
-        where: { id: stored.userId },
-        data: { lastLogoutAt: new Date() },
+        where: { id: storedUserId },
+        data: { lastLogoutAt: now },
+      }).catch(() => {});
+
+      await prisma.auditLog.create({
+        data: {
+          userId: storedUserId,
+          action: 'LOGOUT',
+          entity: 'AUTH',
+          entityId: session?.id,
+        },
       }).catch(() => {});
     }
   },
 
-  async heartbeat(userId: string) {
-    return prisma.user.update({
+  async heartbeat(userId: string, clientInfo?: ClientMetadata) {
+    const now = new Date();
+    await prisma.user.update({
       where: { id: userId },
-      data: { lastActiveAt: new Date() },
+      data: { lastActiveAt: now },
       select: { id: true, lastActiveAt: true },
+    }).catch(() => {});
+
+    let activeSession = await prisma.userSession.findFirst({
+      where: { userId, status: 'ACTIVE' },
+      orderBy: { loginAt: 'desc' },
     });
+
+    if (activeSession) {
+      const durationMinutes = Math.max(1, Math.round((now.getTime() - activeSession.loginAt.getTime()) / 60000));
+      await prisma.userSession.update({
+        where: { id: activeSession.id },
+        data: { lastActiveAt: now, durationMinutes },
+      }).catch(() => {});
+    } else {
+      activeSession = await prisma.userSession.create({
+        data: {
+          userId,
+          loginAt: now,
+          lastActiveAt: now,
+          status: 'ACTIVE',
+          ipAddress: clientInfo?.ipAddress,
+          userAgent: clientInfo?.userAgent,
+          platform: clientInfo?.platform || 'ANDROID',
+        },
+      }).catch(() => null as any);
+    }
+
+    return { id: userId, lastActiveAt: now, sessionId: activeSession?.id };
   },
+
 
   async getMe(userId: string) {
     return prisma.user.findUnique({

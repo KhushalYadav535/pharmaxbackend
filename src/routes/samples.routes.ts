@@ -102,4 +102,95 @@ router.get('/stats', async (req, res) => {
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+// Admin creates a new Sample Product / Gift master
+router.post('/products', requireManager, async (req, res) => {
+  try {
+    const { name, code, batchNumber, expiryDate, openingBalance } = req.body;
+    if (!name || !code) {
+      return res.status(400).json({ success: false, message: 'Sample product name and code are required' });
+    }
+
+    const openBal = parseInt(openingBalance) || 0;
+    const sample = await prisma.sampleProduct.create({
+      data: {
+        name: name.trim(),
+        code: code.trim().toUpperCase(),
+        batchNumber: batchNumber || null,
+        expiryDate: expiryDate ? new Date(expiryDate) : null,
+        openingBalance: openBal,
+        currentBalance: openBal,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json({ success: true, data: sample, message: 'Sample product added successfully' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Rep allocations & Bag balances
+router.get('/rep-allocations', requireManager, async (req, res) => {
+  try {
+    const reps = await prisma.user.findMany({
+      where: { role: 'MR', isActive: true, deletedAt: null },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employeeId: true,
+        hq: { select: { name: true } },
+      },
+      orderBy: { firstName: 'asc' },
+    });
+
+    const distributions = await prisma.sampleDistribution.groupBy({
+      by: ['userId', 'sampleProductId'],
+      _sum: { quantity: true },
+      _count: true,
+    });
+
+    const products = await prisma.sampleProduct.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, code: true, batchNumber: true, openingBalance: true },
+    });
+
+    const distMap = new Map<string, number>();
+    distributions.forEach((d) => {
+      distMap.set(`${d.userId}_${d.sampleProductId}`, d._sum.quantity || 0);
+    });
+
+    const allocations = reps.map((rep) => {
+      const repProducts = products.map((prod) => {
+        const distributed = distMap.get(`${rep.id}_${prod.id}`) || 0;
+        const allocatedQuota = 50; // Standard monthly bag quota
+        return {
+          productId: prod.id,
+          productName: prod.name,
+          productCode: prod.code,
+          batchNumber: prod.batchNumber,
+          quota: allocatedQuota,
+          distributed,
+          bagBalance: Math.max(0, allocatedQuota - distributed),
+        };
+      });
+
+      const totalDistributed = repProducts.reduce((sum, p) => sum + p.distributed, 0);
+
+      return {
+        repId: rep.id,
+        repName: `${rep.firstName} ${rep.lastName}`,
+        employeeId: rep.employeeId,
+        hqName: rep.hq?.name || 'General HQ',
+        totalDistributed,
+        products: repProducts,
+      };
+    });
+
+    res.json({ success: true, data: allocations });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;

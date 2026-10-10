@@ -3,6 +3,7 @@ import app from './app';
 import { env } from './config/env';
 import prisma from './config/database';
 import { ensureDetailingCategoriesTable } from './routes/content.routes';
+import { ensureUserSessionsTable } from './services/mr-usage.service';
 
 async function main() {
   try {
@@ -13,6 +14,10 @@ async function main() {
     // Ensure detailing categories table exists and is seeded
     await ensureDetailingCategoriesTable();
     console.log('✅ Detailing categories table initialized');
+
+    // Ensure user_sessions table exists for MR login tracking
+    await ensureUserSessionsTable();
+    console.log('✅ User sessions table initialized');
 
     app.listen(env.PORT, () => {
       console.log(`🚀 Pharmax API running on http://localhost:${env.PORT}`);

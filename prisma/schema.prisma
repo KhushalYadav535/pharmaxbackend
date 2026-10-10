@@ -211,6 +211,7 @@ model User {
   // Relations
   territories   UserTerritory[]
   refreshTokens RefreshToken[]
+  sessions      UserSession[]
   visits        Visit[]              @relation("VisitCreatedBy")
   managedVisits Visit[]              @relation("VisitApprovedBy")
   expenses      Expense[]
@@ -246,6 +247,32 @@ model RefreshToken {
 
   @@map("refresh_tokens")
 }
+
+model UserSession {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token           String?
+  loginAt         DateTime  @default(now())
+  logoutAt        DateTime?
+  lastActiveAt    DateTime  @default(now())
+  durationMinutes Int       @default(0)
+  status          String    @default("ACTIVE") // ACTIVE, LOGGED_OUT, TIMED_OUT
+  ipAddress       String?
+  userAgent       String?
+  deviceModel     String?
+  platform        String?   // ANDROID, IOS, WEB
+  appVersion      String?
+  logoutReason    String?   // MANUAL, SESSION_TIMEOUT, FORCE_LOGOUT, NEW_LOGIN
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, loginAt])
+  @@index([userId, status])
+  @@index([loginAt])
+  @@map("user_sessions")
+}
+
 
 // â”€â”€â”€ Territory / Headquarter Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
