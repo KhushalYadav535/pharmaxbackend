@@ -57,9 +57,18 @@ export const dayService = {
     };
   },
 
-  // ── §3.2 Start My Day — validates 8 conditions, creates attendance ────────
+  // ── §3.2 Start My Day — validates conditions, creates attendance ────────
   async startDay(userId: string, input: StartDayInput) {
     const today = todayStart();
+
+    // 0. Check employee employment status
+    const emp = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, employmentStatus: true, isActive: true },
+    });
+    if (emp && (!emp.isActive || ['INACTIVE', 'SUSPENDED', 'RESIGNED', 'TERMINATED', 'RETIRED'].includes(emp.employmentStatus || ''))) {
+      throw new Error(`Your employment status is ${emp.employmentStatus || 'INACTIVE'}. Field operations are suspended.`);
+    }
 
     // 1. Check no open/incompatible day exists for today
     const existing = await prisma.attendance.findFirst({
@@ -227,19 +236,31 @@ export const dayService = {
   },
 
   // ── §28 Close Day — irreversible ──────────────────────────────────────────
-  async closeDay(userId: string) {
+  async closeDay(userId: string, input?: { lat?: number; lng?: number; address?: string }) {
     const { canClose, blockers } = await this.validateCloseDay(userId);
     if (!canClose) {
       throw new Error(`Cannot close day: ${blockers.join(' | ')}`);
     }
 
     const attendance = await this._requireOpenDay(userId);
+    const now = new Date();
+    const durationMinutes = attendance.checkInTime
+      ? Math.max(0, Math.round((now.getTime() - attendance.checkInTime.getTime()) / (1000 * 60)))
+      : 0;
+
+    // Check minimum duration: if under 240 mins (4 hrs), mark HALF_DAY, else PRESENT
+    const finalStatus = durationMinutes < 240 ? 'HALF_DAY' : 'PRESENT';
 
     const updated = await prisma.attendance.update({
       where: { id: attendance.id },
       data: {
         dayStatus: DayStatus.CLOSED,
-        checkOutTime: new Date(),
+        checkOutTime: now,
+        checkOutLat: input?.lat ?? null,
+        checkOutLng: input?.lng ?? null,
+        checkOutAddress: input?.address ?? null,
+        durationMinutes,
+        status: finalStatus as any,
       },
     });
 
@@ -249,6 +270,8 @@ export const dayService = {
         attendanceId: attendance.id,
         fromStatus: attendance.dayStatus as DayStatus,
         toStatus: DayStatus.CLOSED,
+        lat: input?.lat ?? null,
+        lng: input?.lng ?? null,
       },
     });
 

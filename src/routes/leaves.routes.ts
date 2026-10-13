@@ -27,20 +27,33 @@ router.get('/', async (req, res) => {
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+import { hrmsLeaveService } from '../services/hrmsLeaveService';
+
 // Apply for leave
 router.post('/', async (req, res) => {
   try {
-    const { startDate, endDate, leaveType, reason } = req.body;
-    const leave = await prisma.leave.create({
-      data: {
-        userId: req.user!.userId,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        leaveType,
-        reason,
-        approvalStatus: 'PENDING',
-      },
+    const { startDate, endDate, leaveType, reason, isHalfDay, halfDaySession } = req.body;
+    
+    // Find matching leave type by code or name
+    const allTypes = await prisma.leaveType.findMany({ where: { status: true } });
+    const normalized = (leaveType || '').toUpperCase();
+    const matched = allTypes.find((t) => 
+      t.code === normalized || 
+      t.name.toUpperCase().includes(normalized) ||
+      (normalized === 'CASUAL' && t.code === 'CL') ||
+      (normalized === 'SICK' && t.code === 'SL') ||
+      (normalized === 'EARNED' && t.code === 'EL')
+    ) || allTypes[0];
+
+    const leave = await hrmsLeaveService.applyLeave(req.user!.userId, {
+      leaveTypeId: matched.id,
+      startDate,
+      endDate,
+      isHalfDay: !!isHalfDay,
+      halfDaySession,
+      reason,
     });
+
     res.status(201).json({ success: true, data: leave });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
@@ -48,10 +61,13 @@ router.post('/', async (req, res) => {
 // Approve leave (manager)
 router.patch('/:id/approve', requireManager, async (req, res) => {
   try {
-    const leave = await prisma.leave.update({
-      where: { id: req.params.id as string },
-      data: { approvalStatus: 'APPROVED', approvedAt: new Date() },
-    });
+    const leave = await hrmsLeaveService.reviewLeave(
+      req.params.id as string,
+      req.user!.userId,
+      req.user!.role,
+      'APPROVE',
+      req.body.remarks
+    );
     res.json({ success: true, data: leave });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
@@ -59,10 +75,13 @@ router.patch('/:id/approve', requireManager, async (req, res) => {
 // Reject leave (manager)
 router.patch('/:id/reject', requireManager, async (req, res) => {
   try {
-    const leave = await prisma.leave.update({
-      where: { id: req.params.id as string },
-      data: { approvalStatus: 'REJECTED' },
-    });
+    const leave = await hrmsLeaveService.reviewLeave(
+      req.params.id as string,
+      req.user!.userId,
+      req.user!.role,
+      'REJECT',
+      req.body.remarks || req.body.rejectionReason
+    );
     res.json({ success: true, data: leave });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
@@ -70,44 +89,40 @@ router.patch('/:id/reject', requireManager, async (req, res) => {
 // Cancel own leave
 router.patch('/:id/cancel', async (req, res) => {
   try {
-    const leave = await prisma.leave.findUnique({ where: { id: req.params.id as string } });
-    if (!leave || leave.userId !== req.user!.userId) return res.status(403).json({ success: false, message: 'Forbidden' });
-    if (leave.approvalStatus === 'APPROVED') return res.status(400).json({ success: false, message: 'Cannot cancel approved leave' });
-    const updated = await prisma.leave.update({
-      where: { id: req.params.id as string },
-      data: { approvalStatus: 'CANCELLED' },
-    });
+    const updated = await hrmsLeaveService.cancelLeave(req.params.id as string, req.user!.userId);
     res.json({ success: true, data: updated });
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
 
-// Leave balance summary
+// Leave balance summary (backward compatible + enriched with HRMS leave balances)
 router.get('/balance', async (req, res) => {
   try {
     const userId = req.user!.userId;
-    const year = new Date().getFullYear();
-    const startOfYear = new Date(year, 0, 1);
-    const endOfYear = new Date(year, 11, 31);
+    const balances = await hrmsLeaveService.getEmployeeLeaveBalances(userId);
 
-    const leaves = await prisma.leave.findMany({
-      where: { userId, startDate: { gte: startOfYear, lte: endOfYear }, approvalStatus: 'APPROVED' },
-    });
-
-    const calcDays = (l: any) => {
-      const ms = new Date(l.endDate).getTime() - new Date(l.startDate).getTime();
-      return Math.ceil(ms / (1000 * 60 * 60 * 24)) + 1;
-    };
-
-    const casual = leaves.filter((l) => l.leaveType === 'casual').reduce((s, l) => s + calcDays(l), 0);
-    const sick = leaves.filter((l) => l.leaveType === 'sick').reduce((s, l) => s + calcDays(l), 0);
-    const earned = leaves.filter((l) => l.leaveType === 'earned').reduce((s, l) => s + calcDays(l), 0);
+    const cl = balances.find((b) => b.leaveType.code === 'CL');
+    const sl = balances.find((b) => b.leaveType.code === 'SL');
+    const el = balances.find((b) => b.leaveType.code === 'EL');
 
     res.json({
       success: true,
       data: {
-        casual: { taken: casual, total: 12, remaining: Math.max(12 - casual, 0) },
-        sick: { taken: sick, total: 12, remaining: Math.max(12 - sick, 0) },
-        earned: { taken: earned, total: 21, remaining: Math.max(21 - earned, 0) },
+        casual: {
+          taken: cl?.used || 0,
+          total: cl?.openingBalance || 12,
+          remaining: cl ? Math.max(0, cl.closingBalance - cl.pending) : 12,
+        },
+        sick: {
+          taken: sl?.used || 0,
+          total: sl?.openingBalance || 10,
+          remaining: sl ? Math.max(0, sl.closingBalance - sl.pending) : 10,
+        },
+        earned: {
+          taken: el?.used || 0,
+          total: el?.openingBalance || 15,
+          remaining: el ? Math.max(0, el.closingBalance - el.pending) : 15,
+        },
+        balances,
       },
     });
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }

@@ -64,10 +64,37 @@ const EMPLOYEE_SELECT = {
   territories: {
     include: { territory: { select: { id: true, name: true, code: true } } },
   },
+  // ── HRMS Workforce Master fields ──
+  employmentStatus: true,
+  employmentType: true,
+  departmentId: true,
+  departmentRel: { select: { id: true, name: true, code: true } },
+  divisionId: true,
+  divisionRel: { select: { id: true, name: true, code: true } },
+  designationId: true,
+  designationRel: { select: { id: true, name: true, code: true } },
+  gradeBandId: true,
+  gradeBandRel: { select: { id: true, name: true, code: true, level: true } },
+  dateOfConfirmation: true,
+  dateOfExit: true,
+  emergencyContactName: true,
+  emergencyContactPhone: true,
+  emergencyContactRelation: true,
+  noticePeriodDays: true,
+  assignments: {
+    where: { isCurrent: true },
+    take: 1,
+    include: {
+      division: { select: { id: true, name: true, code: true } },
+      hq: { select: { id: true, name: true, code: true } },
+      territory: { select: { id: true, name: true, code: true } },
+      manager: { select: { id: true, firstName: true, lastName: true } },
+    },
+  },
 } as const;
 
 // Fields that are date strings and need conversion
-const DATE_FIELDS = ['dateOfJoining', 'dateOfBirth', 'marriageAnniversary'] as const;
+const DATE_FIELDS = ['dateOfJoining', 'dateOfBirth', 'marriageAnniversary', 'dateOfConfirmation', 'dateOfExit'] as const;
 const VALID_GENDERS = ['MALE', 'FEMALE', 'OTHER'];
 const VALID_MARITAL_STATUSES = ['MARRIED', 'UNMARRIED', 'SEPARATED', 'DIVORCED', 'WIDOWED'];
 
@@ -88,10 +115,14 @@ function parseEmployeeData(data: any) {
     }
   }
 
-  // Dependents (must be number or null)
+  // Dependents & noticePeriodDays (must be number or null)
   if (parsed.dependents !== undefined) {
     const num = Number(parsed.dependents);
     parsed.dependents = parsed.dependents !== '' && parsed.dependents !== null && !isNaN(num) ? num : null;
+  }
+  if (parsed.noticePeriodDays !== undefined) {
+    const num = Number(parsed.noticePeriodDays);
+    parsed.noticePeriodDays = parsed.noticePeriodDays !== '' && parsed.noticePeriodDays !== null && !isNaN(num) ? num : 30;
   }
 
   // Foreign keys: managerId & hqId must be valid non-empty string or null
@@ -100,6 +131,18 @@ function parseEmployeeData(data: any) {
   }
   if (parsed.hqId !== undefined) {
     parsed.hqId = typeof parsed.hqId === 'string' && parsed.hqId.trim() ? parsed.hqId.trim() : null;
+  }
+  if (parsed.departmentId !== undefined) {
+    parsed.departmentId = typeof parsed.departmentId === 'string' && parsed.departmentId.trim() ? parsed.departmentId.trim() : null;
+  }
+  if (parsed.divisionId !== undefined) {
+    parsed.divisionId = typeof parsed.divisionId === 'string' && parsed.divisionId.trim() ? parsed.divisionId.trim() : null;
+  }
+  if (parsed.designationId !== undefined) {
+    parsed.designationId = typeof parsed.designationId === 'string' && parsed.designationId.trim() ? parsed.designationId.trim() : null;
+  }
+  if (parsed.gradeBandId !== undefined) {
+    parsed.gradeBandId = typeof parsed.gradeBandId === 'string' && parsed.gradeBandId.trim() ? parsed.gradeBandId.trim() : null;
   }
 
   // Gender enum validation
@@ -115,12 +158,21 @@ function parseEmployeeData(data: any) {
     parsed.maritalStatus = VALID_MARITAL_STATUSES.includes(m) ? m : null;
   }
 
+  // Employment status and type
+  if (parsed.employmentStatus !== undefined) {
+    parsed.employmentStatus = typeof parsed.employmentStatus === 'string' && parsed.employmentStatus.trim() ? parsed.employmentStatus.toUpperCase().trim() : 'ACTIVE';
+  }
+  if (parsed.employmentType !== undefined) {
+    parsed.employmentType = typeof parsed.employmentType === 'string' && parsed.employmentType.trim() ? parsed.employmentType.toUpperCase().trim() : 'PERMANENT';
+  }
+
   // Optional string fields: clean empty string "" to null or trim
   const optionalTextFields = [
     'middleName', 'phone', 'whatsappNumber', 'qualification', 'address1', 'address2',
     'city', 'district', 'state', 'pin', 'facebook', 'instagram', 'twitter', 'linkedin',
     'spouseName', 'aadharNumber', 'panNumber', 'grade', 'designation', 'department',
-    'profilePhoto', 'prefix', 'bloodGroup'
+    'profilePhoto', 'prefix', 'bloodGroup', 'emergencyContactName', 'emergencyContactPhone',
+    'emergencyContactRelation'
   ];
   for (const field of optionalTextFields) {
     if (parsed[field] !== undefined) {
@@ -536,7 +588,7 @@ export const employeeService = {
       ? hqIds.filter((tid: any) => typeof tid === 'string' && tid.trim())
       : [];
 
-    return prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         ...parsed,
         passwordHash,
@@ -553,6 +605,37 @@ export const employeeService = {
       },
       select: EMPLOYEE_SELECT,
     });
+
+    // Auto-create initial EmployeeAssignment if HQ, territory, or division is provided
+    const primaryTerrId = validTerritoryIds[0] || parsed.hqId || null;
+    if (primaryTerrId || parsed.divisionId || parsed.managerId) {
+      await prisma.employeeAssignment.create({
+        data: {
+          userId: user.id,
+          divisionId: parsed.divisionId || null,
+          hqId: parsed.hqId || primaryTerrId,
+          territoryId: primaryTerrId,
+          managerId: parsed.managerId || null,
+          isCurrent: true,
+          effectiveFrom: parsed.dateOfJoining || new Date(),
+          reason: 'Initial joining allocation',
+        },
+      });
+    }
+
+    // Auto-create initial EmployeeMovement record
+    await prisma.employeeMovement.create({
+      data: {
+        userId: user.id,
+        movementType: 'JOINING',
+        effectiveDate: parsed.dateOfJoining || new Date(),
+        newValue: `Joined as ${parsed.designation || user.role} in ${parsed.department || 'Sales'}`,
+        reason: 'New Employee Onboarding',
+        status: 'APPROVED',
+      },
+    });
+
+    return user;
   },
   async update(id: string, data: any) {
     const { hqIds, ...rest } = data;

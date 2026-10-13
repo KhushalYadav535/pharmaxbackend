@@ -45,6 +45,16 @@ import dayRoutes from './routes/day.routes';
 import auditRoutes from './routes/audit.routes';
 import notificationRoutes from './routes/notifications.routes';
 import mrUsageRoutes from './routes/mr-usage.routes';
+// HRMS Workforce Routes
+import hrmsOrgRoutes from './routes/hrms-org.routes';
+import hrmsAssignmentRoutes from './routes/hrms-assignment.routes';
+import hrmsReportingRoutes from './routes/hrms-reporting.routes';
+import hrmsAttendanceRoutes from './routes/hrms-attendance.routes';
+import hrmsLeaveRoutes from './routes/hrms-leave.routes';
+import hrmsDocumentRoutes from './routes/hrms-document.routes';
+import hrmsIncentiveRoutes from './routes/hrms-incentive.routes';
+import hrmsManagerWorkspaceRoutes from './routes/hrms-manager-workspace.routes';
+import uploadRoutes from './routes/upload.routes';
 
 const app = express();
 
@@ -112,6 +122,16 @@ app.use(`${API}/day`, dayRoutes);
 app.use(`${API}/audit-logs`, auditRoutes);
 app.use(`${API}/notifications`, notificationRoutes);
 app.use(`${API}/mr-usage`, mrUsageRoutes);
+// HRMS Workforce Endpoints
+app.use(`${API}/hrms/org`, hrmsOrgRoutes);
+app.use(`${API}/hrms/assignments`, hrmsAssignmentRoutes);
+app.use(`${API}/hrms/reporting-tree`, hrmsReportingRoutes);
+app.use(`${API}/hrms/attendance`, hrmsAttendanceRoutes);
+app.use(`${API}/hrms/leave`, hrmsLeaveRoutes);
+app.use(`${API}/hrms/documents`, hrmsDocumentRoutes);
+app.use(`${API}/hrms/incentives`, hrmsIncentiveRoutes);
+app.use(`${API}/hrms/manager-workspace`, hrmsManagerWorkspaceRoutes);
+app.use(`${API}/upload`, uploadRoutes);
 
 
 // ─── Error Handling ───────────────────────────────────────────────────────────

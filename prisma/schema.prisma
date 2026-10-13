@@ -208,30 +208,66 @@ model User {
   updatedAt           DateTime       @updatedAt
   deletedAt           DateTime?
 
+  // ── HRMS Workforce Master fields ──────────────────────────────────────────
+  employmentStatus         String?              @default("ACTIVE")
+  employmentType           String?              @default("PERMANENT")
+  departmentId             String?
+  departmentRel            Department?          @relation("UserDepartment", fields: [departmentId], references: [id])
+  divisionId               String?
+  divisionRel              Division?            @relation("UserDivision", fields: [divisionId], references: [id])
+  designationId            String?
+  designationRel           Designation?         @relation("UserDesignation", fields: [designationId], references: [id])
+  gradeBandId              String?
+  gradeBandRel             GradeBand?           @relation("UserGradeBand", fields: [gradeBandId], references: [id])
+  dateOfConfirmation       DateTime?
+  dateOfExit               DateTime?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  emergencyContactRelation String?
+  noticePeriodDays         Int?                 @default(30)
+
   // Relations
-  territories   UserTerritory[]
-  refreshTokens RefreshToken[]
-  sessions      UserSession[]
-  visits        Visit[]              @relation("VisitCreatedBy")
-  managedVisits Visit[]              @relation("VisitApprovedBy")
-  expenses      Expense[]
-  attendances   Attendance[]
-  leaves        Leave[]
-  samples       SampleDistribution[]
-  orders        Order[]
-  tourPlans     TourPlan[]
-  notifications Notification[]       @relation("NotificationTo")
-  sentNotifs    Notification[]       @relation("NotificationFrom")
-  auditLogs     AuditLog[]
-  quizAttempts  QuizAttempt[]
-  contentViews  ContentView[]
-  retailAudits  RetailAudit[]
-  manager       User?                @relation("ManagerReports", fields: [managerId], references: [id])
-  managerId     String?
-  reports       User[]               @relation("ManagerReports")
-  tasks         Task[]               @relation("TaskAssignedTo")
-  createdTasks  Task[]               @relation("TaskCreatedBy")
-  dailyReports  DailyVisitReport[]
+  territories         UserTerritory[]
+  refreshTokens       RefreshToken[]
+  sessions            UserSession[]
+  visits              Visit[]              @relation("VisitCreatedBy")
+  managedVisits       Visit[]              @relation("VisitApprovedBy")
+  expenses            Expense[]
+  attendances         Attendance[]
+  leaves              Leave[]                      @relation("UserLeaves")
+  approvedLeaves      Leave[]                      @relation("LeaveApprover")
+  hrApprovedLeaves    Leave[]                      @relation("LeaveHRApprover")
+  leaveBalances       LeaveBalance[]
+  regularizations     AttendanceRegularization[]   @relation("UserRegularizations")
+  approvedRegularizations AttendanceRegularization[] @relation("RegularizationApprover")
+  hrApprovedRegularizations AttendanceRegularization[] @relation("RegularizationHRApprover")
+  settledExpenses     Expense[]                    @relation("ExpenseSettler")
+  documents           EmployeeDocument[]           @relation("UserDocuments")
+  verifiedDocuments   EmployeeDocument[]           @relation("DocumentVerifier")
+  uploadedDocuments   EmployeeDocument[]           @relation("DocumentUploader")
+  incentiveCalculations IncentiveCalculation[]
+  approvedIncentives  IncentiveCalculation[]       @relation("IncentiveApprover")
+  samples             SampleDistribution[]
+  orders              Order[]
+  tourPlans           TourPlan[]
+  notifications       Notification[]       @relation("NotificationTo")
+  sentNotifs          Notification[]       @relation("NotificationFrom")
+  auditLogs           AuditLog[]
+  quizAttempts        QuizAttempt[]
+  contentViews        ContentView[]
+  retailAudits        RetailAudit[]
+  manager             User?                @relation("ManagerReports", fields: [managerId], references: [id])
+  managerId           String?
+  reports             User[]               @relation("ManagerReports")
+  tasks               Task[]               @relation("TaskAssignedTo")
+  createdTasks        Task[]               @relation("TaskCreatedBy")
+  dailyReports        DailyVisitReport[]
+  assignments         EmployeeAssignment[] @relation("UserAssignments")
+  managedAssignments  EmployeeAssignment[] @relation("ManagerAssignments")
+  createdAssignments  EmployeeAssignment[] @relation("AssignedByAssignments")
+  movements           EmployeeMovement[]   @relation("UserMovements")
+  approvedMovements   EmployeeMovement[]   @relation("ApprovedByMovements")
+  headedDepartments   Department[]         @relation("DepartmentHead")
 
   @@map("users")
 }
@@ -309,6 +345,8 @@ model Territory {
   expenses      Expense[]
   dailyReports  DailyVisitReport[]
   employees     User[]             @relation("EmployeeHQ")
+  assignedHQEmployees  EmployeeAssignment[] @relation("AssignmentHQ")
+  assignedTerrEmployees EmployeeAssignment[] @relation("AssignmentTerritory")
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
@@ -397,6 +435,7 @@ model Area {
   tourPlans    TourPlan[]
   expenses     Expense[]
   tourPlanDays TourPlanDay[]
+  assignedAreaEmployees EmployeeAssignment[] @relation("AssignmentArea")
 
   @@map("areas")
 }
@@ -1001,6 +1040,7 @@ model Visit {
   attachments         VisitAttachment[]
   sampleDistributions SampleDistribution[]
   orders              Order[]
+  visitExpenses       Expense[]            @relation("VisitExpenses")
 
   @@map("visits")
 }
@@ -1050,6 +1090,8 @@ model TourPlan {
   notes          String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  tourExpenses   Expense[]      @relation("TourPlanExpenses")
 
   @@map("tour_plans")
 }
@@ -1254,6 +1296,17 @@ model Expense {
   approvalStatus  ApprovalStatus @default(PENDING)
   approvedAt      DateTime?
   rejectionReason String?
+  // HRMS Phase 4 enhancements
+  claimCategory   String?        @default("TA_DA")
+  settledAt       DateTime?
+  settledById     String?
+  settledBy       User?          @relation("ExpenseSettler", fields: [settledById], references: [id])
+  managerRemarks  String?
+  tourPlanId      String?
+  tourPlan        TourPlan?      @relation("TourPlanExpenses", fields: [tourPlanId], references: [id])
+  visitId         String?
+  visit           Visit?         @relation("VisitExpenses", fields: [visitId], references: [id])
+
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -1338,24 +1391,46 @@ model Attendance {
   notes             String?
   createdAt         DateTime         @default(now())
 
-  dayStateLogs DayStateLog[]
+  // HRMS Phase 2 enhancements
+  checkOutLat       Float?
+  checkOutLng       Float?
+  checkOutAddress   String?
+  durationMinutes   Int?
+  isRegularized     Boolean          @default(false)
+  regularizationId  String?
+  regularization    AttendanceRegularization? @relation(fields: [regularizationId], references: [id])
+
+  dayStateLogs      DayStateLog[]
 
   @@unique([userId, date])
   @@map("attendances")
 }
 
 model Leave {
-  id             String         @id @default(uuid())
-  userId         String
-  user           User           @relation(fields: [userId], references: [id])
-  leaveType      String
-  startDate      DateTime
-  endDate        DateTime
-  reason         String?
-  approvalStatus ApprovalStatus @default(PENDING)
-  approvedAt     DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String         @id @default(uuid())
+  userId           String
+  user             User           @relation("UserLeaves", fields: [userId], references: [id])
+  leaveType        String
+  leaveTypeId      String?
+  leaveTypeRel     LeaveType?     @relation(fields: [leaveTypeId], references: [id])
+  startDate        DateTime
+  endDate          DateTime
+  isHalfDay        Boolean        @default(false)
+  halfDaySession   String?
+  totalDays        Float          @default(1.0)
+  supportingDocUrl String?
+  reason           String?
+  approvalStatus   ApprovalStatus @default(PENDING)
+  approvedAt       DateTime?
+  approvedById     String?
+  approvedBy       User?          @relation("LeaveApprover", fields: [approvedById], references: [id])
+  rejectionReason  String?
+  hrApprovedById   String?
+  hrApprovedBy     User?          @relation("LeaveHRApprover", fields: [hrApprovedById], references: [id])
+  hrApprovalStatus String?
+  managerRemarks   String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@map("leaves")
 }
@@ -1552,4 +1627,309 @@ model DetailingCategory {
 
   @@map("detailing_categories")
 }
+
+// ─── HRMS Workforce Masters & Lifecycle Models ───────────────────────────
+
+model Department {
+  id            String        @id @default(uuid())
+  name          String
+  code          String        @unique
+  headId        String?
+  head          User?         @relation("DepartmentHead", fields: [headId], references: [id])
+  status        Boolean       @default(true)
+  effectiveDate DateTime?     @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  employees     User[]        @relation("UserDepartment")
+  designations  Designation[]
+
+  @@map("departments")
+}
+
+model Division {
+  id           String               @id @default(uuid())
+  name         String
+  code         String               @unique
+  businessUnit String?
+  status       Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  employees      User[]               @relation("UserDivision")
+  assignments    EmployeeAssignment[]
+  holidays       Holiday[]
+  incentivePlans IncentivePlan[]
+
+  @@map("divisions")
+}
+
+model GradeBand {
+  id          String        @id @default(uuid())
+  name        String
+  code        String        @unique
+  level       Int?          @default(1)
+  description String?
+  status      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  employees    User[]        @relation("UserGradeBand")
+  designations Designation[]
+
+  @@map("grade_bands")
+}
+
+model Designation {
+  id           String      @id @default(uuid())
+  name         String
+  code         String      @unique
+  gradeBandId  String?
+  gradeBand    GradeBand?  @relation(fields: [gradeBandId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  status       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  employees    User[]      @relation("UserDesignation")
+
+  @@map("designations")
+}
+
+model HRMSSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @default(now())
+
+  @@map("hrms_settings")
+}
+
+model EmployeeAssignment {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  divisionId    String?
+  division      Division?  @relation(fields: [divisionId], references: [id])
+  regionId      String?
+  areaId        String?
+  area          Area?      @relation("AssignmentArea", fields: [areaId], references: [id])
+  hqId          String?
+  hq            Territory? @relation("AssignmentHQ", fields: [hqId], references: [id])
+  territoryId   String?
+  territory     Territory? @relation("AssignmentTerritory", fields: [territoryId], references: [id])
+  managerId     String?
+  manager       User?      @relation("ManagerAssignments", fields: [managerId], references: [id])
+  effectiveFrom DateTime   @default(now())
+  effectiveTo   DateTime?
+  isCurrent     Boolean    @default(true)
+  reason        String?
+  assignedById  String?
+  assignedBy    User?      @relation("AssignedByAssignments", fields: [assignedById], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([userId, isCurrent])
+  @@index([hqId])
+  @@index([territoryId])
+  @@map("employee_assignments")
+}
+
+model EmployeeMovement {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation("UserMovements", fields: [userId], references: [id], onDelete: Cascade)
+  movementType     String
+  effectiveDate    DateTime @default(now())
+  previousValue    String?
+  newValue         String?
+  reason           String?
+  status           String   @default("APPROVED")
+  approvedById     String?
+  approvedBy       User?    @relation("ApprovedByMovements", fields: [approvedById], references: [id])
+  supportingDocUrl String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([movementType])
+  @@index([effectiveDate])
+  @@map("employee_movements")
+}
+
+model AttendanceRegularization {
+  id                 String       @id @default(uuid())
+  userId             String
+  user               User         @relation("UserRegularizations", fields: [userId], references: [id], onDelete: Cascade)
+  attendanceId       String?
+  attendanceDate     DateTime
+  regularizationType String
+  requestedCheckIn   DateTime?
+  requestedCheckOut  DateTime?
+  reason             String
+  status             String       @default("PENDING")
+  managerRemarks     String?
+  approvedById       String?
+  approvedBy         User?        @relation("RegularizationApprover", fields: [approvedById], references: [id])
+  approvedAt         DateTime?
+  hrApprovedById     String?
+  hrApprovedBy       User?        @relation("RegularizationHRApprover", fields: [hrApprovedById], references: [id])
+  hrApprovedAt       DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  attendances        Attendance[]
+
+  @@index([userId, attendanceDate])
+  @@index([status])
+  @@map("attendance_regularizations")
+}
+
+model LeaveType {
+  id                 String         @id @default(uuid())
+  name               String
+  code               String         @unique
+  daysAllowedPerYear Float          @default(12)
+  carryForwardLimit  Float          @default(0)
+  isPaid             Boolean        @default(true)
+  requiresDocument   Boolean        @default(false)
+  minNoticeDays      Int?           @default(0)
+  maxConsecutiveDays Int?           @default(15)
+  description        String?
+  status             Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  leaves             Leave[]
+  balances           LeaveBalance[]
+
+  @@map("leave_types")
+}
+
+model LeaveBalance {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveTypeId    String
+  leaveType      LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year           Int       @default(2026)
+  openingBalance Float     @default(0)
+  accrued        Float     @default(0)
+  used           Float     @default(0)
+  pending        Float     @default(0)
+  closingBalance Float     @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, leaveTypeId, year], name: "unique_user_leave_year")
+  @@index([userId, year])
+  @@map("leave_balances")
+}
+
+model Holiday {
+  id          String    @id @default(uuid())
+  name        String
+  date        DateTime
+  holidayType String    @default("NATIONAL")
+  state       String?
+  divisionId  String?
+  division    Division? @relation(fields: [divisionId], references: [id])
+  isOptional  Boolean   @default(false)
+  status      Boolean   @default(true)
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([date])
+  @@map("holidays")
+}
+
+model EmployeeDocument {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation("UserDocuments", fields: [userId], references: [id], onDelete: Cascade)
+  category       String
+  title          String
+  documentNumber String?
+  fileUrl        String
+  fileType       String?
+  fileSize       Int?
+  issueDate      DateTime?
+  expiryDate     DateTime?
+  status         String    @default("VERIFIED")
+  verifiedById   String?
+  verifiedBy     User?     @relation("DocumentVerifier", fields: [verifiedById], references: [id])
+  verifiedAt     DateTime?
+  uploadedById   String?
+  uploadedBy     User?     @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  isConfidential Boolean   @default(false)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([category])
+  @@index([expiryDate])
+  @@map("employee_documents")
+}
+
+model IncentivePlan {
+  id                      String                 @id @default(uuid())
+  name                    String
+  code                    String                 @unique
+  periodType              String                 @default("MONTHLY")
+  startDate               DateTime
+  endDate                 DateTime
+  minTargetAchievementPct Float                  @default(80.0)
+  minCallCoveragePct      Float                  @default(85.0)
+  baseIncentiveRate       Float                  @default(5.0)
+  superIncentiveRate      Float                  @default(10.0)
+  applicableRole          String?                @default("MR")
+  divisionId              String?
+  division                Division?              @relation(fields: [divisionId], references: [id])
+  description             String?
+  status                  Boolean                @default(true)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  calculations            IncentiveCalculation[]
+
+  @@index([code])
+  @@map("incentive_plans")
+}
+
+model IncentiveCalculation {
+  id                  String        @id @default(uuid())
+  userId              String
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId              String
+  plan                IncentivePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  period              String
+  targetAmount        Float         @default(0.0)
+  achievedAmount      Float         @default(0.0)
+  achievementPercent  Float         @default(0.0)
+  callsPlanned        Int           @default(0)
+  callsCompleted      Int           @default(0)
+  callCoveragePercent Float         @default(0.0)
+  calculatedAmount    Float         @default(0.0)
+  finalAmount         Float         @default(0.0)
+  status              String        @default("APPROVED")
+  approvedById        String?
+  approvedBy          User?         @relation("IncentiveApprover", fields: [approvedById], references: [id])
+  approvedAt          DateTime?
+  paidAt              DateTime?
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@unique([userId, planId, period], name: "unique_user_incentive_period")
+  @@index([userId, period])
+  @@index([status])
+  @@map("incentive_calculations")
+}
+
+
 

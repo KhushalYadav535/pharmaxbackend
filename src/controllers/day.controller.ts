@@ -48,7 +48,7 @@ export const dayController = {
   // POST /day/close
   async closeDay(req: Request, res: Response) {
     try {
-      const result = await dayService.closeDay(req.user!.userId);
+      const result = await dayService.closeDay(req.user!.userId, req.body);
       res.json({ success: true, data: result });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
