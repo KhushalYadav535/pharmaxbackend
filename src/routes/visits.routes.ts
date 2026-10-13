@@ -14,6 +14,7 @@ router.get('/team/members',     requireManager,                    visitControll
 router.get('/:id',                                                 visitController.getById);
 router.post('/',                auditLog('CREATE',  'Visit'),      visitController.create);
 router.post('/bulk-plan',       requireManager, auditLog('CREATE', 'Visit'), visitController.bulkPlan);
+router.post('/bulk-cancel',     auditLog('BULK_CANCEL', 'Visit'), visitController.bulkCancel);
 router.patch('/:id/navigate',   auditLog('NAVIGATE','Visit'),      visitController.navigate);
 router.patch('/:id/check-in',   auditLog('CHECK_IN','Visit'),      visitController.checkIn);
 router.patch('/:id/prepare',    auditLog('PREPARE','Visit'),       visitController.prepare);

@@ -244,4 +244,32 @@ export const visitController = {
       res.status(500).json({ success: false, message: err.message });
     }
   },
+
+  // Bulk Cancel Visits
+  async bulkCancel(req: Request, res: Response) {
+    try {
+      const { visitIds, userId: targetUserId, date, fromDate, toDate, reason, includeActive } = req.body;
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ success: false, message: 'Cancellation reason is required' });
+      }
+
+      const result = await visitService.bulkCancel(req.user!.userId, req.user!.role, {
+        visitIds,
+        mrUserId: targetUserId,
+        date,
+        fromDate,
+        toDate,
+        reason,
+        includeActive,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+        message: result.message,
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
 };

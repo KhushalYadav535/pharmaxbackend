@@ -1034,4 +1034,93 @@ export const visitService = {
       visits: createdVisits,
     };
   },
+
+  async bulkCancel(
+    reqUserId: string,
+    reqRole: string,
+    params: {
+      visitIds?: string[];
+      mrUserId?: string;
+      date?: string;
+      fromDate?: string;
+      toDate?: string;
+      reason: string;
+      includeActive?: boolean;
+    }
+  ) {
+    const { visitIds, mrUserId, date, fromDate, toDate, reason, includeActive = false } = params;
+
+    if (!reason || !reason.trim()) {
+      throw new Error('A cancellation reason is required.');
+    }
+
+    const isManagerOrAdmin = ['SUPER_ADMIN', 'SALES_ADMIN', 'ADMIN', 'NSM', 'ZM', 'RSM', 'ASM'].includes(reqRole);
+
+    const allowedStatuses: VisitStatus[] = includeActive
+      ? [
+          VisitStatus.PLANNED,
+          VisitStatus.NAVIGATING,
+          VisitStatus.CHECKED_IN,
+          VisitStatus.PREPARING,
+          VisitStatus.ENGAGING,
+          VisitStatus.DETAILING,
+          VisitStatus.PAUSED,
+        ]
+      : [VisitStatus.PLANNED, VisitStatus.NAVIGATING];
+
+    const where: Prisma.VisitWhereInput = {
+      status: { in: allowedStatuses },
+    };
+
+    // If specific visit IDs provided
+    if (Array.isArray(visitIds) && visitIds.length > 0) {
+      where.id = { in: visitIds };
+      if (!isManagerOrAdmin) {
+        where.userId = reqUserId;
+      }
+    } else if (mrUserId || !isManagerOrAdmin) {
+      const targetUserId = isManagerOrAdmin ? (mrUserId || reqUserId) : reqUserId;
+      where.userId = targetUserId;
+
+      const targetDate = date || fromDate;
+      if (targetDate) {
+        const start = new Date(targetDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(toDate || targetDate);
+        end.setHours(23, 59, 59, 999);
+        where.plannedDate = { gte: start, lte: end };
+      }
+    } else {
+      throw new Error('Either visitIds or a representative userId (with date) is required for bulk cancellation.');
+    }
+
+    const visitsToCancel = await prisma.visit.findMany({
+      where,
+      select: {
+        id: true,
+        status: true,
+        plannedDate: true,
+        notes: true,
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+
+    if (visitsToCancel.length === 0) {
+      return { count: 0, message: 'No cancellable visits found matching the criteria.' };
+    }
+
+    const updated = await prisma.visit.updateMany({
+      where: { id: { in: visitsToCancel.map((v) => v.id) } },
+      data: {
+        status: VisitStatus.CANCELLED,
+        missedReason: reason.trim(),
+        pausedAt: null,
+      },
+    });
+
+    return {
+      count: updated.count,
+      message: `Successfully cancelled ${updated.count} visits.`,
+    };
+  },
 };
