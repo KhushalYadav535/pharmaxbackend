@@ -149,6 +149,23 @@ export const doctorService = {
     return prisma.doctor.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
   },
 
+  async bulkSoftDelete(doctorIds: string[]) {
+    return prisma.doctor.updateMany({
+      where: { id: { in: doctorIds }, deletedAt: null },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+  },
+
+  async bulkSoftDeleteByHq(hqId: string) {
+    return prisma.doctor.updateMany({
+      where: {
+        deletedAt: null,
+        OR: [{ hqId }, { territoryId: hqId }],
+      },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+  },
+
   async getStats(userId: string, userRole: string) {
     const where: Prisma.DoctorWhereInput = { deletedAt: null, isActive: true };
     if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {

@@ -182,6 +182,13 @@ export const doctorController = {
         return digits.length >= 10 ? digits.slice(-10) : digits;
       };
 
+      const normalizeDoctorName = (first?: string, last?: string): string => {
+        return `${first || ''} ${last || ''}`
+          .toLowerCase()
+          .replace(/^dr\.?\s*/i, '')
+          .replace(/[^a-z0-9]/g, '');
+      };
+
       const existingCodes = new Set<string>();
       const existingPhones = new Set<string>();
       const existingEmails = new Set<string>();
@@ -192,8 +199,13 @@ export const doctorController = {
         const ph = cleanPhoneDigits(d.phone);
         if (ph && ph.length >= 10) existingPhones.add(ph);
         if (d.email) existingEmails.add(d.email.trim().toLowerCase());
-        const nameKey = `${(d.firstName || '').trim().toLowerCase()}_${(d.lastName || '').trim().toLowerCase()}_${d.hqId || d.territoryId || ''}`;
-        existingNameHq.add(nameKey);
+
+        const normName = normalizeDoctorName(d.firstName, d.lastName);
+        if (normName) {
+          if (d.hqId) existingNameHq.add(`${normName}_${d.hqId}`);
+          if (d.territoryId) existingNameHq.add(`${normName}_${d.territoryId}`);
+          existingNameHq.add(`${(d.firstName || '').trim().toLowerCase()}_${(d.lastName || '').trim().toLowerCase()}_${d.hqId || d.territoryId || ''}`);
+        }
       }
 
       // Track items seen in the current batch to prevent intra-sheet duplicates
@@ -227,7 +239,10 @@ export const doctorController = {
         // Prioritize explicit row HQ, then selected batch HQ, then default HQ
         const rowHqId = item.hqId || item.headquarterId || targetHQ?.id || null;
         const rowTerritoryId = item.territoryId || rowHqId || targetHQ?.id || null;
-        const nameHqKey = `${fName.toLowerCase()}_${lName.toLowerCase()}_${rowHqId || ''}`;
+        const normInputName = normalizeDoctorName(fName, lName);
+        const nameKeyHq = `${normInputName}_${rowHqId || ''}`;
+        const nameKeyTerritory = `${normInputName}_${rowTerritoryId || ''}`;
+        const legacyNameHqKey = `${fName.toLowerCase()}_${lName.toLowerCase()}_${rowHqId || ''}`;
 
         // ── Deduplication Check ──
         let skipReason = '';
@@ -237,7 +252,11 @@ export const doctorController = {
           skipReason = `Doctor with phone number "${docPhone}" already exists in database`;
         } else if (docEmail && (existingEmails.has(docEmail) || batchEmails.has(docEmail))) {
           skipReason = `Doctor with email "${docEmail}" already exists in database`;
-        } else if (existingNameHq.has(nameHqKey) || batchNameHq.has(nameHqKey)) {
+        } else if (
+          (normInputName && (existingNameHq.has(nameKeyHq) || existingNameHq.has(nameKeyTerritory) || batchNameHq.has(nameKeyHq) || batchNameHq.has(nameKeyTerritory))) ||
+          existingNameHq.has(legacyNameHqKey) ||
+          batchNameHq.has(legacyNameHqKey)
+        ) {
           skipReason = `Dr. ${fName} ${lName} already exists in this Headquarter`;
         }
 
@@ -252,6 +271,12 @@ export const doctorController = {
             reason: skipReason,
           });
           continue; // Skip duplicate doctor as requested
+        }
+
+        if (normInputName) {
+          if (rowHqId) batchNameHq.add(nameKeyHq);
+          if (rowTerritoryId) batchNameHq.add(nameKeyTerritory);
+          batchNameHq.add(legacyNameHqKey);
         }
 
         // ── Create Doctor ──
@@ -307,8 +332,18 @@ export const doctorController = {
             existingEmails.add(docEmail);
             batchEmails.add(docEmail);
           }
-          existingNameHq.add(nameHqKey);
-          batchNameHq.add(nameHqKey);
+          if (normInputName) {
+            if (rowHqId) {
+              existingNameHq.add(nameKeyHq);
+              batchNameHq.add(nameKeyHq);
+            }
+            if (rowTerritoryId) {
+              existingNameHq.add(nameKeyTerritory);
+              batchNameHq.add(nameKeyTerritory);
+            }
+            existingNameHq.add(legacyNameHqKey);
+            batchNameHq.add(legacyNameHqKey);
+          }
 
           createdCount++;
         } catch (itemErr: any) {
@@ -360,6 +395,38 @@ export const doctorController = {
         success: true,
         data: { transferredCount: updated.count },
         message: `Successfully transferred ${updated.count} doctors`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  async bulkDelete(req: Request, res: Response) {
+    try {
+      if (req.user && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user.role)) {
+        return res.status(403).json({ success: false, message: 'Access denied: Only administrators can bulk delete doctors.' });
+      }
+
+      const { doctorIds, hqId, deleteAllInHq } = req.body;
+
+      if (deleteAllInHq && hqId) {
+        const result = await doctorService.bulkSoftDeleteByHq(hqId);
+        return res.json({
+          success: true,
+          data: { deletedCount: result.count },
+          message: `Successfully deleted ${result.count} doctors from this headquarter.`
+        });
+      }
+
+      if (!Array.isArray(doctorIds) || doctorIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'doctorIds array or hqId with deleteAllInHq is required' });
+      }
+
+      const result = await doctorService.bulkSoftDelete(doctorIds);
+      return res.json({
+        success: true,
+        data: { deletedCount: result.count },
+        message: `Successfully deleted ${result.count} selected doctors.`
       });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
