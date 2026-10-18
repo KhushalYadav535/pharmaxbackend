@@ -236,17 +236,27 @@ export const mrUsageService = {
       prisma.visit.findMany({
         where: {
           userId: { in: mrIds },
-          plannedDate: { gte: rangeStart, lte: rangeEnd },
+          OR: [
+            { plannedDate: { gte: rangeStart, lte: rangeEnd } },
+            { checkInTime: { gte: rangeStart, lte: rangeEnd } },
+            { checkOutTime: { gte: rangeStart, lte: rangeEnd } },
+          ],
         },
         select: {
           id: true,
           userId: true,
           plannedDate: true,
+          visitType: true,
           status: true,
           checkInTime: true,
           checkOutTime: true,
           durationMinutes: true,
+          doctorId: true,
+          retailerId: true,
+          doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+          retailer: { select: { id: true, name: true, city: true } },
         },
+        orderBy: { plannedDate: 'desc' },
       }),
       prisma.attendance.findMany({
         where: {
@@ -258,9 +268,20 @@ export const mrUsageService = {
       prisma.visit.findMany({
         where: {
           userId: { in: mrIds },
-          plannedDate: { gte: startOfToday, lte: endOfToday },
+          OR: [
+            { plannedDate: { gte: startOfToday, lte: endOfToday } },
+            { checkInTime: { gte: startOfToday, lte: endOfToday } },
+          ],
         },
-        select: { userId: true, status: true, checkInTime: true, checkOutTime: true, durationMinutes: true },
+        select: {
+          id: true,
+          userId: true,
+          visitType: true,
+          status: true,
+          checkInTime: true,
+          checkOutTime: true,
+          durationMinutes: true,
+        },
       }),
     ]);
 
@@ -436,6 +457,19 @@ export const mrUsageService = {
         }
       }
 
+      // Compute calls / visits metrics for selected period
+      const completedVisits = vists.filter((v) => ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status));
+      const totalCalls = vists.length;
+      const totalCallsCompleted = completedVisits.length;
+      const doctorCalls = completedVisits.filter((v) => v.visitType === 'DOCTOR').length;
+      const chemistCalls = completedVisits.filter((v) => ['RETAILER', 'STOCKIST', 'DISTRIBUTOR'].includes(v.visitType)).length;
+      const plannedCalls = vists.filter((v) => v.status === 'PLANNED').length;
+      const callCompletionRate = totalCalls > 0 ? Math.round((totalCallsCompleted / totalCalls) * 100) : (totalCallsCompleted > 0 ? 100 : 0);
+
+      const todayDoctorCalls = todayRepVisits.filter((v) => v.visitType === 'DOCTOR' && ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status)).length;
+      const todayChemistCalls = todayRepVisits.filter((v) => ['RETAILER', 'STOCKIST', 'DISTRIBUTOR'].includes(v.visitType) && ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status)).length;
+      const todayPlannedCalls = todayRepVisits.length;
+
       const avgDailyMinutes = activeDaysCount > 0 ? Math.round(totalMinutes / activeDaysCount) : 0;
 
       return {
@@ -465,6 +499,13 @@ export const mrUsageService = {
         activeDaysCount,
         avgDailyMinutes,
         avgDailyHoursFormatted: formatMinutes(avgDailyMinutes),
+        // Field Calls Metrics for the Period
+        totalCalls,
+        totalCallsCompleted,
+        doctorCalls,
+        chemistCalls,
+        plannedCalls,
+        callCompletionRate,
         // Today Metrics
         todayLogins,
         todayLogouts,
@@ -473,6 +514,9 @@ export const mrUsageService = {
         todayAttendanceStatus: todayAtt?.status || (completedVisitsToday > 0 ? 'PRESENT' : 'NOT_MARKED'),
         todayDayStatus: todayAtt?.dayStatus || (currentStatus === 'ONLINE' ? 'IN_PROGRESS' : completedVisitsToday > 0 ? 'CLOSED' : 'NOT_STARTED'),
         todayVisitsCompleted: completedVisitsToday,
+        todayVisitsPlanned: todayPlannedCalls,
+        todayDoctorCalls,
+        todayChemistCalls,
       };
     });
 
@@ -490,6 +534,12 @@ export const mrUsageService = {
     const totalLogoutsTeam = mrList.reduce((acc, m) => acc + m.totalLogouts, 0);
     const totalAppMinutesTeam = mrList.reduce((acc, m) => acc + m.totalMinutes, 0);
     const avgAppMinutesPerMR = mrList.length > 0 ? Math.round(totalAppMinutesTeam / mrList.length) : 0;
+
+    const totalCallsCompletedTeam = mrList.reduce((acc, m) => acc + (m.totalCallsCompleted || 0), 0);
+    const totalCallsPlannedTeam = mrList.reduce((acc, m) => acc + (m.totalCalls || 0), 0);
+    const totalDoctorCallsTeam = mrList.reduce((acc, m) => acc + (m.doctorCalls || 0), 0);
+    const totalChemistCallsTeam = mrList.reduce((acc, m) => acc + (m.chemistCalls || 0), 0);
+    const avgCallsPerMR = mrList.length > 0 ? Math.round((totalCallsCompletedTeam / mrList.length) * 10) / 10 : 0;
 
     // Sort by usage to find top and least active
     const sortedByUsage = [...mrList].sort((a, b) => b.totalMinutes - a.totalMinutes);
@@ -511,6 +561,17 @@ export const mrUsageService = {
         }
       : null;
 
+    const sortedByCalls = [...mrList].sort((a, b) => (b.totalCallsCompleted || 0) - (a.totalCallsCompleted || 0));
+    const topCallerMR = sortedByCalls.length > 0 && (sortedByCalls[0].totalCallsCompleted || 0) > 0
+      ? {
+          name: sortedByCalls[0].name,
+          employeeId: sortedByCalls[0].employeeId,
+          callsCount: sortedByCalls[0].totalCallsCompleted,
+          doctorCalls: sortedByCalls[0].doctorCalls,
+          chemistCalls: sortedByCalls[0].chemistCalls,
+        }
+      : null;
+
     return {
       summary: {
         totalMRs: mrs.length,
@@ -524,6 +585,13 @@ export const mrUsageService = {
         avgDailyHoursFormatted: formatMinutes(avgAppMinutesPerMR),
         topActiveMR,
         leastActiveMR,
+        // Field Calls Summary
+        totalCallsCompleted: totalCallsCompletedTeam,
+        totalCallsPlanned: totalCallsPlannedTeam,
+        totalDoctorCalls: totalDoctorCallsTeam,
+        totalChemistCalls: totalChemistCallsTeam,
+        avgCallsPerMR,
+        topCallerMR,
       },
       dateRange: {
         startDate: formatDateStr(rangeStart),
@@ -596,19 +664,33 @@ export const mrUsageService = {
       orderBy: { date: 'desc' },
     });
 
-    // 4. Fetch visits in date range
+    // 4. Fetch visits in date range (matching plannedDate or checkInTime/checkOutTime)
     const visits = await prisma.visit.findMany({
       where: {
         userId: mrId,
-        plannedDate: { gte: rangeStart, lte: rangeEnd },
+        OR: [
+          { plannedDate: { gte: rangeStart, lte: rangeEnd } },
+          { checkInTime: { gte: rangeStart, lte: rangeEnd } },
+          { checkOutTime: { gte: rangeStart, lte: rangeEnd } },
+        ],
       },
       select: {
         id: true,
         plannedDate: true,
+        visitType: true,
         status: true,
         checkInTime: true,
         checkOutTime: true,
         durationMinutes: true,
+        visitPurpose: true,
+        visitFeedback: true,
+        productsPromoted: true,
+        doctorId: true,
+        retailerId: true,
+        hospitalId: true,
+        doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+        retailer: { select: { id: true, name: true, city: true, address: true } },
+        hospital: { select: { id: true, name: true, city: true } },
       },
       orderBy: { plannedDate: 'desc' },
     });
@@ -675,8 +757,14 @@ export const mrUsageService = {
       const dayAttendance = attendances.find((a) => formatDateStr(new Date(a.date)) === dateStr);
 
       // Visits on this day
-      const dayVisits = visits.filter((v) => formatDateStr(new Date(v.plannedDate)) === dateStr);
-      const completedVisits = dayVisits.filter((v) => ['COMPLETED', 'REPORTED'].includes(v.status));
+      const dayVisits = visits.filter((v) => {
+        const pDate = formatDateStr(new Date(v.plannedDate));
+        const cDate = v.checkInTime ? formatDateStr(new Date(v.checkInTime)) : null;
+        return pDate === dateStr || cDate === dateStr;
+      });
+      const completedVisits = dayVisits.filter((v) => ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status));
+      const dayDoctorVisits = completedVisits.filter((v) => v.visitType === 'DOCTOR').length;
+      const dayChemistVisits = completedVisits.filter((v) => ['RETAILER', 'STOCKIST', 'DISTRIBUTOR'].includes(v.visitType)).length;
 
       let dSessionMins = 0;
       let firstLoginDate: Date | null = null;
@@ -804,6 +892,9 @@ export const mrUsageService = {
         attendanceStatus: dayAttendance?.status || (currentDate.getDay() === 0 ? 'SUNDAY' : dayVisits.length > 0 ? 'PRESENT' : 'NOT_MARKED'),
         dayStatus: dayAttendance?.dayStatus || (isStillActiveToday ? 'IN_PROGRESS' : dayVisits.length > 0 ? 'CLOSED' : 'NOT_STARTED'),
         visitsCompleted: completedVisits.length,
+        doctorCalls: dayDoctorVisits,
+        chemistCalls: dayChemistVisits,
+        visitsPlanned: dayVisits.length,
       });
 
       // Advance one day
@@ -849,6 +940,59 @@ export const mrUsageService = {
     const avgDailyMinutes = activeDaysCount > 0 ? Math.round(overallTotalMinutes / activeDaysCount) : 0;
     const avgSessionMinutes = overallTotalLogins > 0 ? Math.round(overallTotalMinutes / overallTotalLogins) : 0;
 
+    // Field calls metrics
+    const totalCalls = visits.length;
+    const completedCallsTotal = visits.filter((v) => ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status)).length;
+    const doctorCallsTotal = visits.filter((v) => v.visitType === 'DOCTOR' && ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status)).length;
+    const chemistCallsTotal = visits.filter((v) => ['RETAILER', 'STOCKIST', 'DISTRIBUTOR'].includes(v.visitType) && ['COMPLETED', 'REPORTED', 'CHECKED_OUT'].includes(v.status)).length;
+    const plannedCallsTotal = visits.filter((v) => v.status === 'PLANNED').length;
+    const callCompletionRate = totalCalls > 0 ? Math.round((completedCallsTotal / totalCalls) * 100) : (completedCallsTotal > 0 ? 100 : 0);
+    const avgDailyCalls = activeDaysCount > 0 ? Math.round((completedCallsTotal / activeDaysCount) * 10) / 10 : 0;
+
+    // Format individual visits list
+    const visitsList = visits.map((v) => {
+      const targetName = v.doctor
+        ? `Dr. ${v.doctor.firstName} ${v.doctor.lastName}`
+        : v.retailer
+        ? v.retailer.name
+        : v.hospital
+        ? v.hospital.name
+        : 'Field Contact';
+
+      const targetSubtitle = v.doctor
+        ? v.doctor.specialty || 'General Practitioner'
+        : v.retailer
+        ? `Chemist/Retailer • ${v.retailer.city || 'Local'}`
+        : v.hospital
+        ? `Hospital • ${v.hospital.city || 'Local'}`
+        : 'Contact';
+
+      const pDate = new Date(v.plannedDate);
+      const cIn = v.checkInTime ? new Date(v.checkInTime) : null;
+      const cOut = v.checkOutTime ? new Date(v.checkOutTime) : null;
+      let durMins = v.durationMinutes || 0;
+      if (!durMins && cIn && cOut) {
+        durMins = Math.max(1, Math.round((cOut.getTime() - cIn.getTime()) / 60000));
+      }
+
+      return {
+        id: v.id,
+        targetName,
+        targetSubtitle,
+        visitType: v.visitType,
+        status: v.status,
+        plannedDate: v.plannedDate,
+        displayDate: pDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        checkInTime: formatTime12h(cIn),
+        checkOutTime: formatTime12h(cOut),
+        durationMinutes: durMins,
+        durationFormatted: formatMinutes(durMins),
+        purpose: v.visitPurpose || 'Detailing & Sampling',
+        feedback: v.visitFeedback || null,
+        productsPromoted: v.productsPromoted || [],
+      };
+    });
+
     return {
       mr: {
         id: mr.id,
@@ -882,6 +1026,14 @@ export const mrUsageService = {
         avgDailyHoursFormatted: formatMinutes(avgDailyMinutes),
         avgSessionMinutes,
         avgSessionFormatted: formatMinutes(avgSessionMinutes),
+        // Calls Metrics
+        totalCalls,
+        totalCallsCompleted: completedCallsTotal,
+        doctorCalls: doctorCallsTotal,
+        chemistCalls: chemistCallsTotal,
+        plannedCalls: plannedCallsTotal,
+        callCompletionRate,
+        avgDailyCalls,
       },
       dateRange: {
         startDate: formatDateStr(rangeStart),
@@ -890,6 +1042,7 @@ export const mrUsageService = {
       },
       dayBreakdown,
       sessionLogs,
+      visitsList,
     };
   },
 };
