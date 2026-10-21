@@ -407,6 +407,9 @@ model Interior {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  doctors      Doctor[]
+  tourPlanDays TourPlanDay[]
+
   @@map("interiors")
 }
 
@@ -590,6 +593,8 @@ model Doctor {
   geoTagLng             Float? // legacy
   areaId                String?
   area                  Area?                @relation(fields: [areaId], references: [id])
+  interiorId            String?
+  interior              Interior?            @relation(fields: [interiorId], references: [id])
   hqId                  String? // FFMS: HQ
   hq                    Territory?           @relation("DoctorHQ", fields: [hqId], references: [id])
   retailerId            String? // FFMS: Retailer FK
@@ -1103,6 +1108,8 @@ model TourPlanDay {
   date       DateTime
   areaId     String?
   area       Area?    @relation(fields: [areaId], references: [id])
+  interiorId String?
+  interior   Interior? @relation(fields: [interiorId], references: [id])
   purpose    String?
 
   plannedVisits Visit[]

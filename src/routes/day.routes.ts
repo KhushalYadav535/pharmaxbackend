@@ -11,5 +11,6 @@ router.post('/start',      auditLog('START_DAY', 'Attendance'), dayController.st
 router.post('/end',        auditLog('DAY_END', 'Attendance'),   dayController.beginDayEnd);
 router.get('/close-check', dayController.closeCheck);
 router.post('/close',      auditLog('CLOSE_DAY', 'Attendance'), dayController.closeDay);
+router.post('/trigger-nightly-closure', dayController.triggerNightlyClosure);
 
 export default router;

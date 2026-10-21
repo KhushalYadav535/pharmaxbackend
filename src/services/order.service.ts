@@ -8,11 +8,11 @@ export const orderService = {
     const where: any = {};
     if (userId) where.userId = userId;
     if (status) {
-      if (status === 'PENDING') {
+      if (status === 'PENDING' || status === 'SUBMITTED') {
         where.status = 'SUBMITTED';
-      } else if (status === 'APPROVED' || status === 'CONFIRMED') {
+      } else if (status === 'APPROVED' || status === 'CONFIRMED' || status === 'PROCESSING') {
         where.status = 'PROCESSING';
-      } else if (status === 'SHIPPED') {
+      } else if (status === 'SHIPPED' || status === 'DISPATCHED') {
         where.status = 'DISPATCHED';
       } else {
         where.status = status;
@@ -32,9 +32,22 @@ export const orderService = {
         where,
         include: {
           user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
-          retailer: { select: { id: true, name: true } },
-          distributor: { select: { id: true, name: true } },
-          items: true
+          retailer: { select: { id: true, name: true, city: true } },
+          distributor: { select: { id: true, name: true, city: true } },
+          visit: {
+            select: {
+              id: true,
+              visitType: true,
+              doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+              retailer: { select: { id: true, name: true } },
+              distributor: { select: { id: true, name: true } },
+            }
+          },
+          items: {
+            include: {
+              product: { select: { id: true, name: true, productCode: true, category: true, ptr: true, pts: true, mrp: true } }
+            }
+          }
         },
         skip: (p - 1) * l,
         take: l,
@@ -50,12 +63,59 @@ export const orderService = {
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
-        retailer: { select: { id: true, name: true, address1: true, city: true, mobileNumber: true } },
-        distributor: { select: { id: true, name: true, address1: true, city: true, mobileNumber: true } },
+        user: {
+          select: {
+            id: true, firstName: true, lastName: true, employeeId: true, phone: true, role: true,
+            managerId: true,
+            manager: {
+              select: { id: true, firstName: true, lastName: true, role: true, phone: true }
+            }
+          }
+        },
+        retailer: {
+          select: {
+            id: true, name: true, address1: true, address2: true, city: true, district: true, state: true,
+            pin: true, pincode: true, phone: true, mobileNumber: true, gstNumber: true, drugLicenseNumber: true, ownerName: true
+          }
+        },
+        distributor: {
+          select: {
+            id: true, name: true, address: true, city: true, state: true, pincode: true,
+            phone: true, gstNumber: true, drugLicenseNumber: true, ownerName: true
+          }
+        },
+        visit: {
+          select: {
+            id: true,
+            visitType: true,
+            doctor: {
+              select: {
+                id: true, salutation: true, firstName: true, lastName: true, specialty: true, qualification: true,
+                doctorCode: true, phone: true, address1: true, city: true, state: true, pincode: true
+              }
+            },
+            retailer: {
+              select: {
+                id: true, name: true, address1: true, city: true, state: true, pin: true,
+                gstNumber: true, drugLicenseNumber: true, phone: true
+              }
+            },
+            distributor: {
+              select: {
+                id: true, name: true, address: true, city: true, state: true, pincode: true,
+                gstNumber: true, drugLicenseNumber: true, phone: true
+              }
+            },
+          }
+        },
         items: {
           include: {
-            product: { select: { id: true, name: true, productCode: true, category: true } }
+            product: {
+              select: {
+                id: true, name: true, productCode: true, code: true, category: true,
+                ptr: true, pts: true, mrp: true, unit: true, composition: true, unitsInPackage: true
+              }
+            }
           }
         }
       }
@@ -66,7 +126,7 @@ export const orderService = {
 
   async create(reqUserId: string, data: any) {
     const { 
-      userId, hqId, retailerId, distributorId, orderDate, expectedDeliveryDate,
+      userId, hqId, retailerId, distributorId, visitId, orderDate, expectedDeliveryDate,
       totalAmount, discount, notes, items 
     } = data;
     
@@ -74,25 +134,56 @@ export const orderService = {
       throw new Error('Order must contain at least one item');
     }
 
-    if (!retailerId && !distributorId) {
-      throw new Error('Order must be associated with either a Retailer or a Distributor');
+    if (!retailerId && !distributorId && !visitId) {
+      throw new Error('Order must be associated with either a Retailer, Distributor, or Visit');
     }
 
     // Auto-generate a readable order number
     const orderNumber = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
 
+    let finalDistributorId: string | null = null;
+    let finalNotes = notes || '';
+
+    if (distributorId) {
+      const dist = await prisma.distributor.findUnique({ where: { id: distributorId } });
+      if (dist) {
+        finalDistributorId = dist.id;
+      } else {
+        // Check if distributorId was pointing to a Stockist
+        const stockist = await prisma.stockist.findUnique({ where: { id: distributorId } });
+        if (stockist) {
+          finalNotes = `[Stockist: ${stockist.name}] ${finalNotes}`.trim();
+          const anyDist = await prisma.distributor.findFirst({ where: { isActive: true } });
+          finalDistributorId = anyDist?.id || null;
+        }
+      }
+    }
+
+    let finalRetailerId: string | null = null;
+    if (retailerId) {
+      const ret = await prisma.retailer.findUnique({ where: { id: retailerId } });
+      if (ret) finalRetailerId = ret.id;
+    }
+
+    let finalVisitId: string | null = null;
+    if (visitId) {
+      const vis = await prisma.visit.findUnique({ where: { id: visitId } });
+      if (vis) finalVisitId = vis.id;
+    }
+
     return prisma.order.create({
       data: {
         orderNumber,
         userId: userId || reqUserId, // Admins can create for others
-        hqId,
-        retailerId,
-        distributorId,
+        hqId: hqId || undefined,
+        retailerId: finalRetailerId,
+        distributorId: finalDistributorId,
+        visitId: finalVisitId,
         orderDate: orderDate ? new Date(orderDate) : new Date(),
         expectedDeliveryDate: data.expectedDeliveryDate ? new Date(data.expectedDeliveryDate) : null,
         totalAmount: data.totalAmount,
         discount: data.discount || 0,
-        notes: data.notes || '',
+        notes: finalNotes,
         status: 'SUBMITTED',
         items: {
           create: items.map((item: any) => ({
@@ -109,7 +200,7 @@ export const orderService = {
     });
   },
 
-  async updateStatus(id: string, status: any) {
+  async updateStatus(id: string, status: any, currentUser?: any) {
     let targetStatus = status;
     if (status === 'APPROVED' || status === 'CONFIRMED') {
       targetStatus = 'PROCESSING';
@@ -124,7 +215,18 @@ export const orderService = {
       throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
     
-    await this.getById(id);
+    const existingOrder = await this.getById(id);
+
+    // If changing to PROCESSING (Approved/Confirmed), ensure user is ASM, RSM, ZM, or NSM
+    if (targetStatus === 'PROCESSING' && currentUser) {
+      const allowedRoles = ['ASM', 'RSM', 'ZM', 'NSM'];
+      const isSalesManager = allowedRoles.includes(currentUser.role);
+      const isDirectManager = existingOrder.user?.managerId === currentUser.userId;
+
+      if (!isSalesManager && !isDirectManager) {
+        throw new Error('Permission denied: Orders can only be approved by field managers (ASM, RSM, ZM, NSM).');
+      }
+    }
     
     return prisma.order.update({
       where: { id },

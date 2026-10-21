@@ -1,5 +1,5 @@
 import prisma from '../config/database';
-import { DayStatus } from '@prisma/client';
+import { DayStatus, VisitStatus } from '@prisma/client';
 
 export interface StartDayInput {
   lat: number;
@@ -173,9 +173,23 @@ export const dayService = {
     return updated;
   },
 
-  // ── §26 Validate Close Day — returns blockers list ────────────────────────
-  async validateCloseDay(userId: string): Promise<{ canClose: boolean; blockers: string[] }> {
+  // ── §26 Validate Close Day — returns blockers & bulk-missed eligibility ───
+  async validateCloseDay(userId: string): Promise<{
+    canClose: boolean;
+    canCloseWithBulkMissed: boolean;
+    pendingPlannedCount: number;
+    pendingPlannedVisits: Array<{
+      id: string;
+      visitType: string;
+      targetName: string;
+      specialty?: string | null;
+      city?: string | null;
+    }>;
+    hasHardBlockers: boolean;
+    blockers: string[];
+  }> {
     const blockers: string[] = [];
+    const hardBlockers: string[] = [];
     const start = todayStart();
     const end = todayEnd();
 
@@ -184,11 +198,25 @@ export const dayService = {
       where: { userId, date: start },
     });
     if (!attendance) {
+      hardBlockers.push('No attendance record found for today.');
       blockers.push('No attendance record found for today.');
-      return { canClose: false, blockers };
+      return {
+        canClose: false,
+        canCloseWithBulkMissed: false,
+        pendingPlannedCount: 0,
+        pendingPlannedVisits: [],
+        hasHardBlockers: true,
+        blockers,
+      };
     }
 
-    // 2. No active visit (§27)
+    // 2. Day must be in IN_PROGRESS or DAY_END_REVIEW (not already CLOSED)
+    if (attendance.dayStatus === DayStatus.CLOSED) {
+      hardBlockers.push('Your day is already closed.');
+      blockers.push('Your day is already closed.');
+    }
+
+    // 3. No active visit in clinic (CHECKED_IN, ENGAGING, DETAILING, PAUSED) (§27)
     const activeVisit = await prisma.visit.findFirst({
       where: {
         userId,
@@ -197,10 +225,11 @@ export const dayService = {
       },
     });
     if (activeVisit) {
+      hardBlockers.push('You have an active visit in progress. Check out and submit the report first.');
       blockers.push('You have an active visit in progress. Check out and submit the report first.');
     }
 
-    // 3. No CHECKED_OUT / REPORT_PENDING visits (report not submitted)
+    // 4. No CHECKED_OUT / REPORT_PENDING visits (report not submitted)
     const unreportedVisits = await prisma.visit.count({
       where: {
         userId,
@@ -209,37 +238,136 @@ export const dayService = {
       },
     });
     if (unreportedVisits > 0) {
+      hardBlockers.push(`${unreportedVisits} visit report(s) pending. Submit all reports before closing the day.`);
       blockers.push(`${unreportedVisits} visit report(s) pending. Submit all reports before closing the day.`);
     }
 
-    // 4. No PLANNED/NAVIGATING visits (must be completed, cancelled, or marked missed)
-    const incompleteVisits = await prisma.visit.count({
+    // 5. Query PLANNED/NAVIGATING visits (unvisited calls)
+    const incompleteVisits = await prisma.visit.findMany({
       where: {
         userId,
         status: { in: ['PLANNED', 'NAVIGATING'] },
         plannedDate: { gte: start, lte: end },
       },
+      include: {
+        doctor: { select: { id: true, firstName: true, lastName: true, specialty: true, city: true } },
+        retailer: { select: { id: true, name: true, city: true } },
+        distributor: { select: { id: true, name: true, city: true } },
+        hospital: { select: { id: true, name: true, city: true } },
+        stockist: { select: { id: true, name: true, city: true } },
+      },
     });
-    if (incompleteVisits > 0) {
-      blockers.push(`${incompleteVisits} visit(s) are still incomplete. Please mark them as MISSED with a reason if they were not done.`);
-    }
 
-    // 4. Day must be in IN_PROGRESS or DAY_END_REVIEW (not already CLOSED)
-    if (attendance.dayStatus === DayStatus.CLOSED) {
-      blockers.push('Your day is already closed.');
+    const pendingPlannedCount = incompleteVisits.length;
+    const hasHardBlockers = hardBlockers.length > 0;
+    const canCloseWithBulkMissed = !hasHardBlockers && pendingPlannedCount > 0;
+    const canCloseDirectly = !hasHardBlockers && pendingPlannedCount === 0;
+
+    // Friendly prompt for unvisited calls
+    if (pendingPlannedCount > 0) {
+      blockers.push(`${pendingPlannedCount} visit(s) were not completed. You can mark them MISSED in 1 click to close your day.`);
     }
 
     return {
-      canClose: blockers.length === 0,
+      canClose: canCloseDirectly || canCloseWithBulkMissed,
+      canCloseWithBulkMissed,
+      pendingPlannedCount,
+      pendingPlannedVisits: incompleteVisits.map((v: any) => {
+        let targetName = 'Commercial Partner';
+        if (v.doctor) targetName = `Dr. ${v.doctor.firstName} ${v.doctor.lastName}`;
+        else if (v.retailer) targetName = v.retailer.name;
+        else if (v.distributor) targetName = v.distributor.name;
+        else if (v.hospital) targetName = v.hospital.name;
+        else if (v.stockist) targetName = v.stockist.name;
+
+        return {
+          id: v.id,
+          visitType: v.visitType,
+          targetName,
+          specialty: v.doctor?.specialty || null,
+          city: v.doctor?.city || v.retailer?.city || v.distributor?.city || null,
+        };
+      }),
+      hasHardBlockers,
       blockers,
     };
   },
 
   // ── §28 Close Day — irreversible ──────────────────────────────────────────
-  async closeDay(userId: string, input?: { lat?: number; lng?: number; address?: string }) {
-    const { canClose, blockers } = await this.validateCloseDay(userId);
-    if (!canClose) {
-      throw new Error(`Cannot close day: ${blockers.join(' | ')}`);
+  async closeDay(userId: string, input?: {
+    lat?: number;
+    lng?: number;
+    address?: string;
+    bulkMissedReason?: string;
+    carryForwardMissedToTomorrow?: boolean;
+  }) {
+    const check = await this.validateCloseDay(userId);
+    if (check.hasHardBlockers) {
+      throw new Error(`Cannot close day: ${check.blockers.filter(b => !b.includes('1 click')).join(' | ')}`);
+    }
+
+    const start = todayStart();
+    const end = todayEnd();
+
+    // If there are unvisited PLANNED/NAVIGATING calls:
+    if (check.pendingPlannedCount > 0) {
+      if (!input?.bulkMissedReason || !input.bulkMissedReason.trim()) {
+        throw new Error(`Cannot close day: ${check.pendingPlannedCount} planned visit(s) remain incomplete. Please select a reason to mark them missed.`);
+      }
+
+      const reason = input.bulkMissedReason.trim();
+
+      // Retrieve planned visits to carry forward if requested
+      const pendingVisits = await prisma.visit.findMany({
+        where: {
+          userId,
+          status: { in: ['PLANNED', 'NAVIGATING'] },
+          plannedDate: { gte: start, lte: end },
+        },
+      });
+
+      // Update remaining planned calls to MISSED
+      await prisma.visit.updateMany({
+        where: {
+          userId,
+          status: { in: ['PLANNED', 'NAVIGATING'] },
+          plannedDate: { gte: start, lte: end },
+        },
+        data: {
+          status: VisitStatus.MISSED,
+          missedReason: reason,
+          remarks: `Bulk marked MISSED on day close: ${reason}`,
+        },
+      });
+
+      // Optional carry forward to tomorrow
+      if (input.carryForwardMissedToTomorrow) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(9, 30, 0, 0);
+
+        for (const pv of pendingVisits) {
+          try {
+            await prisma.visit.create({
+              data: {
+                userId,
+                visitType: pv.visitType,
+                status: VisitStatus.PLANNED,
+                plannedDate: tomorrow,
+                doctorId: pv.doctorId,
+                hospitalId: pv.hospitalId,
+                retailerId: pv.retailerId,
+                distributorId: pv.distributorId,
+                stockistId: pv.stockistId,
+                remarks: `Carried forward from yesterday (Missed: ${reason})`,
+                isUnplanned: false,
+              },
+            });
+          } catch (createErr) {
+            console.warn('Could not carry forward visit:', pv.id, createErr);
+          }
+        }
+      }
     }
 
     const attendance = await this._requireOpenDay(userId);
@@ -274,6 +402,27 @@ export const dayService = {
         lng: input?.lng ?? null,
       },
     });
+
+    // Close any active user sessions for this user so app time stops accumulating
+    try {
+      const activeSessions = await prisma.userSession.findMany({
+        where: { userId, status: 'ACTIVE' },
+      });
+      for (const s of activeSessions) {
+        const sessionMins = Math.max(0, Math.round((now.getTime() - s.loginAt.getTime()) / (1000 * 60)));
+        await prisma.userSession.update({
+          where: { id: s.id },
+          data: {
+            status: 'LOGGED_OUT',
+            logoutAt: now,
+            durationMinutes: sessionMins,
+            logoutReason: 'DAY_CLOSED',
+          },
+        });
+      }
+    } catch (sessionErr) {
+      console.warn('Could not auto-close session on day close:', sessionErr);
+    }
 
     return updated;
   },

@@ -128,6 +128,138 @@ router.get('/pending-leaves', requireManager, async (req, res) => {
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+// ── Pending Orders (Manager Team Scoped) ──────────────────────────────────────
+router.get('/pending-orders', requireManager, async (req, res) => {
+  try {
+    const userFilter = await getManagerFilter(req);
+
+    const pending = await prisma.order.findMany({
+      where: {
+        ...userFilter,
+        status: { in: ['SUBMITTED', 'DRAFT'] }
+      },
+      orderBy: { orderDate: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeId: true,
+            role: true,
+            managerId: true,
+            manager: { select: { id: true, firstName: true, lastName: true, role: true } }
+          }
+        },
+        retailer: { select: { id: true, name: true, city: true, mobileNumber: true } },
+        distributor: { select: { id: true, name: true, city: true } },
+        visit: {
+          select: {
+            id: true,
+            visitType: true,
+            doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } }
+          }
+        },
+        items: {
+          include: {
+            product: { select: { id: true, name: true, productCode: true, category: true, ptr: true, mrp: true } }
+          }
+        }
+      }
+    });
+
+    res.json({ success: true, data: pending });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── Approve Order (Manager Action) ───────────────────────────────────────────
+router.patch('/orders/:id/approve', requireManager, async (req, res) => {
+  try {
+    const orderId = req.params.id as string;
+    const currentUser = (req as any).user;
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { user: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const isSalesManager = ['ASM', 'RSM', 'ZM', 'NSM'].includes(currentUser.role);
+    const isDirectManager = order.user?.managerId === currentUser.userId;
+
+    if (!isSalesManager && !isDirectManager) {
+      return res.status(403).json({
+        success: false,
+        message: 'Permission denied: Orders can only be approved by field managers (ASM, RSM, ZM, NSM).'
+      });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'PROCESSING', // PROCESSING represents Confirmed / Manager Approved
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Order approved successfully by Manager`,
+      data: updated
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ── Reject / Cancel Order (Manager Action) ───────────────────────────────────
+router.patch('/orders/:id/reject', requireManager, async (req, res) => {
+  try {
+    const orderId = req.params.id as string;
+    const { reason } = req.body;
+    const currentUser = (req as any).user;
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { user: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const isSalesManager = ['ASM', 'RSM', 'ZM', 'NSM'].includes(currentUser.role);
+    const isDirectManager = order.user?.managerId === currentUser.userId;
+
+    if (!isSalesManager && !isDirectManager) {
+      return res.status(403).json({
+        success: false,
+        message: 'Permission denied: Orders can only be rejected by field managers (ASM, RSM, ZM, NSM).'
+      });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'CANCELLED',
+        notes: reason ? `${order.notes || ''} [Rejected by Manager: ${reason}]`.trim() : order.notes
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Order rejected by Manager',
+      data: updated
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 // ── Aggregated summary count ──────────────────────────────────────────────────
 router.get('/summary', requireManager, async (req, res) => {
   try {
@@ -138,7 +270,7 @@ router.get('/summary', requireManager, async (req, res) => {
       prisma.expense.count({ where: { ...userFilter, approvalStatus: 'PENDING' } }),
       prisma.leave.count({ where: { ...userFilter, approvalStatus: 'PENDING' } }),
       prisma.tourPlan.count({ where: { ...userFilter, approvalStatus: 'PENDING', planDate: { not: null } } }),
-      prisma.order.count({ where: { status: 'SUBMITTED' } }),
+      prisma.order.count({ where: { ...userFilter, status: { in: ['SUBMITTED', 'DRAFT'] } } }),
       prisma.doctor.count({ where: { approvalStatus: 'PENDING', isActive: true } }),
     ]);
 

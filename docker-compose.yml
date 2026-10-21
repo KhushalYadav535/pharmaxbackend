@@ -7,6 +7,8 @@ services:
       - .env
     ports:
       - "5000"
+    volumes:
+      - pharmax_uploads:/app/uploads
     networks:
       - coolify
       - postgresql-1ffd_default
@@ -24,3 +26,6 @@ networks:
     external: true
   postgresql-1ffd_default:
     external: true
+
+volumes:
+  pharmax_uploads:

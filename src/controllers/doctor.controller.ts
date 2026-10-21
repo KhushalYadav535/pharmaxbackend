@@ -14,6 +14,7 @@ export const doctorController = {
           territoryId: req.query.territoryId as string,
           hqId: (req.query.hqId || req.query.headquarterId) as string,
           areaId: req.query.areaId as string,
+          interiorId: req.query.interiorId as string,
           hospitalId: req.query.hospitalId as string,
           approvalStatus: req.query.approvalStatus as any,
           page: req.query.page ? parseInt(req.query.page as string) : 1,
@@ -53,6 +54,14 @@ export const doctorController = {
         };
       }
 
+      // Sanitize foreign key strings: convert empty strings to null/undefined
+      const fkFields = ['areaId', 'interiorId', 'hqId', 'territoryId', 'hospitalId', 'retailerId'];
+      for (const field of fkFields) {
+        if (data[field] === '') {
+          delete data[field];
+        }
+      }
+
       // Sync HQ and Territory
       if (!data.territoryId && data.hqId) {
         data.territoryId = data.hqId;
@@ -88,14 +97,37 @@ export const doctorController = {
       const { productIds, ...updateData } = req.body;
       const data: any = { ...updateData };
 
-      // MR cannot modify doctor specialty or category assignment (Admin only)
+      // MR cannot modify doctor master details (HQ, Area, Classification, Name, etc.).
+      // However, MRs CAN update prescribed/detailing products (productIds) during field visits.
       if (req.user && ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user.role)) {
-        if (data.specialty !== undefined || data.category !== undefined) {
+        if (productIds === undefined) {
           return res.status(403).json({
             success: false,
-            message: 'Access denied: Only administrators can assign or modify doctor specialties/categories.'
+            message: 'Access denied: Medical Representatives cannot edit doctors. Only Administrators can modify doctor master details.'
           });
         }
+
+        await prisma.doctorProduct.deleteMany({ where: { doctorId: req.params.id as string } });
+        if (Array.isArray(productIds) && productIds.length > 0) {
+          await prisma.doctorProduct.createMany({
+            data: productIds.map((pid: string) => ({ doctorId: req.params.id as string, productId: pid }))
+          });
+        }
+        const updatedDoc = await doctorService.getById(req.params.id as string);
+        return res.json({ success: true, data: updatedDoc, message: 'Doctor products updated successfully' });
+      }
+
+      // Sanitize foreign key strings: convert empty strings to null so Prisma clears the relation
+      const fkFields = ['areaId', 'interiorId', 'hqId', 'territoryId', 'hospitalId', 'retailerId'];
+      for (const field of fkFields) {
+        if (data[field] === '') {
+          data[field] = null;
+        }
+      }
+
+      // If hqId is set but territoryId isn't, keep them in sync
+      if (data.hqId && !data.territoryId) {
+        data.territoryId = data.hqId;
       }
 
       if (productIds) {
@@ -105,7 +137,7 @@ export const doctorController = {
         };
       }
 
-      const doctor = await doctorService.update(req.params.id as string as string, data);
+      const doctor = await doctorService.update(req.params.id as string, data);
       res.json({ success: true, data: doctor, message: 'Doctor updated successfully' });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
@@ -309,6 +341,8 @@ export const doctorController = {
               pincode: (item.pincode || item.pin) ? String(item.pincode || item.pin) : null,
               territoryId: rowTerritoryId,
               hqId: rowHqId,
+              areaId: item.areaId || null,
+              interiorId: item.interiorId || null,
               hospitalId: item.hospitalId || null,
               retailerId: item.retailerId || null,
               prescriptionPotential: Number(item.prescriptionPotential) || 0,

@@ -4,6 +4,7 @@ import { env } from './config/env';
 import prisma from './config/database';
 import { ensureDetailingCategoriesTable } from './routes/content.routes';
 import { ensureUserSessionsTable } from './services/mr-usage.service';
+import { initDayClosureCron } from './jobs/day-closure.job';
 
 async function main() {
   try {
@@ -18,6 +19,9 @@ async function main() {
     // Ensure user_sessions table exists for MR login tracking
     await ensureUserSessionsTable();
     console.log('✅ User sessions table initialized');
+
+    // Initialize nightly 10:00 PM IST automated day closure cron
+    initDayClosureCron();
 
     app.listen(env.PORT, () => {
       console.log(`🚀 Pharmax API running on http://localhost:${env.PORT}`);

@@ -54,4 +54,15 @@ export const dayController = {
       res.status(400).json({ success: false, message: err.message });
     }
   },
+
+  // POST /day/trigger-nightly-closure (admin/test trigger for automated day end cron)
+  async triggerNightlyClosure(req: Request, res: Response) {
+    try {
+      const { dayClosureService } = await import('../jobs/day-closure.job');
+      const result = await dayClosureService.runNightlyClosure();
+      res.json({ success: true, message: 'Nightly day closure executed successfully', data: result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
 };

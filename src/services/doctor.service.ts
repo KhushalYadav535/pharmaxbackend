@@ -9,6 +9,7 @@ export interface DoctorFilters {
   territoryId?: string;
   hqId?: string;
   areaId?: string;
+  interiorId?: string;
   hospitalId?: string;
   approvalStatus?: 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
   page?: number;
@@ -18,7 +19,7 @@ export interface DoctorFilters {
 export const doctorService = {
   async list(filters: DoctorFilters, userId: string, userRole: string) {
     const {
-      search, specialty, category, classification, territoryId, hqId, areaId, hospitalId, approvalStatus,
+      search, specialty, category, classification, territoryId, hqId, areaId, interiorId, hospitalId, approvalStatus,
       page = 1, limit = 20,
     } = filters;
 
@@ -56,6 +57,7 @@ export const doctorService = {
       });
     }
     if (areaId) andConditions.push({ areaId });
+    if (interiorId) andConditions.push({ interiorId });
     if (hospitalId) andConditions.push({ hospitalId });
 
     // MR/Rep level: only their assigned Headquarter(s)
@@ -94,7 +96,8 @@ export const doctorService = {
           hospital: { select: { id: true, name: true } },
           territory: { select: { id: true, name: true } },
           hq: { select: { id: true, name: true } },
-          area: { select: { id: true, name: true } },
+          area: { select: { id: true, name: true, areaCode: true } },
+          interior: { select: { id: true, name: true, interiorCode: true } },
           productsSelected: {
             include: { product: { select: { id: true, name: true, productCode: true } } },
           },
@@ -118,6 +121,7 @@ export const doctorService = {
         territory: true,
         hq: true,
         area: true,
+        interior: true,
         retailer: true,
         tags: true,
         productsSelected: {

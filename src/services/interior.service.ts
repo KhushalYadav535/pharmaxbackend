@@ -2,17 +2,21 @@ import prisma from '../config/database';
 
 export const interiorService = {
   async list(filters: any) {
-    const { page = 1, limit = 50, locationId, search, isActive } = filters;
+    const { page = 1, limit = 50, locationId, hqId, search, isActive } = filters;
     const p = Number(page), l = Number(limit);
     const where: any = {};
     if (locationId) where.locationId = locationId;
+    if (hqId) where.hqId = hqId;
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (isActive !== undefined) where.isActive = isActive === 'true';
 
     const [interiors, total] = await Promise.all([
       prisma.interior.findMany({
         where,
-        include: { location: { select: { id: true, name: true } } },
+        include: {
+          location: { select: { id: true, name: true } },
+          hq: { select: { id: true, name: true } },
+        },
         skip: (p - 1) * l,
         take: l,
         orderBy: { name: 'asc' },
@@ -23,7 +27,7 @@ export const interiorService = {
   },
 
   async getById(id: string) {
-    return prisma.interior.findUnique({ where: { id }, include: { location: true } });
+    return prisma.interior.findUnique({ where: { id }, include: { location: true, hq: true } });
   },
 
   async create(data: any) {

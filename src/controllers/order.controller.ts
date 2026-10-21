@@ -33,7 +33,7 @@ export const orderController = {
   async updateStatus(req: Request, res: Response) {
     try {
       const { status } = req.body;
-      const data = await orderService.updateStatus(req.params.id as string, status);
+      const data = await orderService.updateStatus(req.params.id as string, status, (req as any).user);
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });

@@ -44,6 +44,7 @@ export const tourPlanService = {
         days: {
           include: {
             area: { select: { id: true, name: true } },
+            interior: { select: { id: true, name: true } },
             plannedVisits: {
               include: {
                 doctor: { select: { id: true, firstName: true, lastName: true, specialty: true, classification: true } },
@@ -136,7 +137,8 @@ export const tourPlanService = {
       data: {
         tourPlanId,
         date: new Date(data.date),
-        areaId: data.areaId,
+        areaId: data.areaId || undefined,
+        interiorId: data.interiorId || undefined,
         purpose: data.purpose
       }
     });
@@ -210,6 +212,7 @@ export const tourPlanService = {
           tourPlanId,
           date: new Date(targetDate),
           areaId: sourceDay.areaId,
+          interiorId: sourceDay.interiorId,
           purpose: sourceDay.purpose
         }
       });

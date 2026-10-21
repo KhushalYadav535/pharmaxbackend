@@ -1,5 +1,5 @@
 import prisma from '../config/database';
-import { Prisma, VisitStatus, VisitType, ApprovalStatus } from '@prisma/client';
+import { Prisma, VisitStatus, VisitType, ApprovalStatus, OrderStatus } from '@prisma/client';
 import { ACTIVE_VISIT_STATUSES } from './day.service';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -83,6 +83,21 @@ export interface SubmitReportInput {
   businessSignal?: string[];
   visitObjective?: string[];
   productsDiscussed?: string[];
+  orderData?: {
+    retailerId?: string;
+    distributorId?: string;
+    expectedDeliveryDate?: string;
+    discount?: number;
+    notes?: string;
+    items: Array<{
+      productId: string;
+      quantity: number;
+      unitPrice: number;
+      productScheme?: string;
+      discount?: number;
+      totalPrice: number;
+    }>;
+  };
 }
 
 export interface MarkMissedInput {
@@ -676,7 +691,7 @@ export const visitService = {
         visitFeedback: data.feedback,
         engagement: data.engagement,
         followUpAction: data.followUpAction,
-        nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : undefined,
+        nextFollowUpDate: data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : (data.nextFollowUpDate === null ? null : undefined),
         notes: data.notes,
         objectionsRaised: data.objectionsRaised,
         businessSignal: data.businessSignal || [],
@@ -726,6 +741,50 @@ export const visitService = {
         }
       } catch (scheduleErr) {
         console.error('Failed to auto-schedule follow-up visit in calendar:', scheduleErr);
+      }
+    }
+
+    // ── Booked Field Order Creation ───────────────────────────────────────────
+    if (data.orderData && Array.isArray(data.orderData.items) && data.orderData.items.length > 0) {
+      try {
+        const validItems = data.orderData.items.filter((it: any) => it.productId && Number(it.quantity) > 0);
+        if (validItems.length > 0) {
+          const grandTotal = validItems.reduce((acc: number, it: any) => {
+            const lineTotal = Number(it.totalPrice) || (Number(it.quantity) * Number(it.unitPrice || 0) - Number(it.discount || 0));
+            return acc + (lineTotal > 0 ? lineTotal : 0);
+          }, 0);
+          const finalTotal = Math.max(0, grandTotal - (Number(data.orderData.discount) || 0));
+
+          const orderNumber = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+
+          await prisma.order.create({
+            data: {
+              orderNumber,
+              userId,
+              visitId: visit.id,
+              retailerId: data.orderData.retailerId || visit.retailerId || undefined,
+              distributorId: data.orderData.distributorId || visit.distributorId || undefined,
+              orderDate: new Date(),
+              expectedDeliveryDate: data.orderData.expectedDeliveryDate ? new Date(data.orderData.expectedDeliveryDate) : null,
+              totalAmount: finalTotal,
+              discount: Number(data.orderData.discount || 0),
+              notes: data.orderData.notes || `Order booked during field visit to ${visit.visitType}`,
+              status: OrderStatus.SUBMITTED,
+              items: {
+                create: validItems.map((item: any) => ({
+                  productId: item.productId,
+                  quantity: Number(item.quantity),
+                  productScheme: item.productScheme || null,
+                  unitPrice: Number(item.unitPrice || 0),
+                  discount: Number(item.discount || 0),
+                  totalPrice: Number(item.totalPrice) || (Number(item.quantity) * Number(item.unitPrice || 0) - Number(item.discount || 0)),
+                })),
+              },
+            },
+          });
+        }
+      } catch (orderErr) {
+        console.error('Failed to create order during visit report submission:', orderErr);
       }
     }
 

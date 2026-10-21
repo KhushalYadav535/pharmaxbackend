@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { aiService } from '../services/ai.service';
+import { aiAgentService } from '../services/ai-agent.service';
 
 export const aiController = {
   async summarizeVisit(req: Request, res: Response) {
@@ -46,6 +47,27 @@ export const aiController = {
     try {
       const report = await aiService.generateEODReport(req.body.visits || []);
       res.json({ success: true, data: { report } });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  async handleAgent(req: Request, res: Response) {
+    try {
+      const { messages } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ success: false, message: 'messages array is required' });
+      }
+
+      const result = await aiAgentService.processCommand(messages, {
+        id: req.user!.userId,
+        role: req.user!.role,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+      });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
