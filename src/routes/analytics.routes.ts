@@ -488,4 +488,343 @@ router.get('/doctor-frequency-compliance', async (req, res) => {
   }
 });
 
+// ── MR Sales & Trade Scheme Performance Analytics ─────────────────────────────
+router.get('/mr-sales-performance', async (req, res) => {
+  try {
+    const { fromDate, toDate, mrId, hqId } = req.query;
+
+    const whereOrder: any = {};
+
+    // Date range filter on orderDate or createdAt
+    if (fromDate || toDate) {
+      whereOrder.orderDate = {};
+      if (fromDate) whereOrder.orderDate.gte = new Date(fromDate as string);
+      if (toDate) {
+        const d = new Date(toDate as string);
+        d.setHours(23, 59, 59, 999);
+        whereOrder.orderDate.lte = d;
+      }
+    }
+
+    if (mrId && mrId !== 'ALL') {
+      whereOrder.userId = mrId as string;
+    }
+
+    if (hqId && hqId !== 'ALL') {
+      whereOrder.OR = [
+        { hqId: hqId as string },
+        { user: { hqId: hqId as string } },
+      ];
+    }
+
+    // Role-based scoping: MRs see only themselves, managers/admins see all
+    if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) {
+      whereOrder.userId = req.user!.userId;
+    }
+
+    // Helper to extract free bonus units from productScheme string & quantity
+    const extractBonusUnits = (productScheme: string | null, quantity: number) => {
+      if (!productScheme || quantity <= 0) return { bonusUnits: 0, schemeName: 'Standard (No Scheme)', ratio: 'None' };
+      
+      // If productScheme contains "(+X Free)"
+      const plusFreeMatch = productScheme.match(/\(\+(\d+)\s*Free/i);
+      if (plusFreeMatch) {
+        const free = parseInt(plusFreeMatch[1], 10) || 0;
+        const ratioMatch = productScheme.match(/(\d+)\s*\+\s*(\d+)/);
+        return {
+          bonusUnits: free,
+          schemeName: productScheme,
+          ratio: ratioMatch ? `${ratioMatch[1]}+${ratioMatch[2]}` : 'Free Goods'
+        };
+      }
+
+      // Check pattern like "10+2" or "10+1" or "20+2"
+      const ratioMatch = productScheme.match(/(\d+)\s*\+\s*(\d+)/);
+      if (ratioMatch) {
+        const buy = parseInt(ratioMatch[1], 10) || 10;
+        const free = parseInt(ratioMatch[2], 10) || 1;
+        const bonusUnits = Math.floor((quantity * free) / buy);
+        return {
+          bonusUnits,
+          schemeName: productScheme,
+          ratio: `${buy}+${free}`
+        };
+      }
+
+      return { bonusUnits: 0, schemeName: productScheme, ratio: 'Custom' };
+    };
+
+    // Fetch all matching orders with items, products, user, and customer
+    const orders = await prisma.order.findMany({
+      where: whereOrder,
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeId: true,
+            email: true,
+            phone: true,
+            role: true,
+            hqId: true,
+            territories: {
+              include: { territory: true }
+            }
+          }
+        },
+        retailer: { select: { id: true, name: true, city: true, phone: true } },
+        distributor: { select: { id: true, name: true, city: true, phone: true } },
+        items: {
+          include: {
+            product: { select: { id: true, name: true, category: true, ptr: true, mrp: true } }
+          }
+        }
+      },
+      orderBy: { orderDate: 'desc' }
+    });
+
+    // Also fetch all MR users in system to include even those with 0 orders if company view
+    const allMrUsers = await prisma.user.findMany({
+      where: {
+        role: { in: ['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'] },
+        isActive: true,
+        ...(hqId && hqId !== 'ALL' ? { hqId: hqId as string } : {})
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employeeId: true,
+        email: true,
+        role: true,
+        hqId: true,
+        territories: {
+          include: { territory: true }
+        }
+      }
+    });
+
+    // Territories / HQs map
+    const allHqs = await prisma.territory.findMany({
+      select: { id: true, name: true, code: true, state: true }
+    });
+    const hqMap = new Map(allHqs.map(h => [h.id, h]));
+
+    // Aggregate company-wide metrics
+    let totalSalesValue = 0;
+    let totalPaidUnits = 0;
+    let totalFreeUnits = 0;
+    const totalOrdersCount = orders.length;
+
+    const schemeAggregates: Record<string, { schemeName: string; ratio: string; timesUsed: number; paidUnits: number; freeUnits: number; revenue: number }> = {};
+    const mrMap: Record<string, any> = {};
+
+    // Initialize all MR users
+    allMrUsers.forEach(u => {
+      const hq = u.hqId ? hqMap.get(u.hqId) : (u.territories?.[0]?.territory || null);
+      mrMap[u.id] = {
+        mrId: u.id,
+        mrName: `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+        firstName: u.firstName,
+        lastName: u.lastName,
+        employeeId: u.employeeId || 'EMP',
+        email: u.email,
+        role: u.role,
+        hqName: hq?.name || 'Indore HQ',
+        hqCode: hq?.code || 'HQ',
+        ordersCount: 0,
+        totalSales: 0,
+        paidUnits: 0,
+        freeUnits: 0,
+        totalUnits: 0,
+        effectiveBonusRate: 0,
+        schemesUsed: {},
+        topProducts: {},
+        orders: []
+      };
+    });
+
+    // Process orders
+    orders.forEach(order => {
+      const u = order.user;
+      if (!u) return;
+
+      if (!mrMap[u.id]) {
+        const hq = u.hqId ? hqMap.get(u.hqId) : (u.territories?.[0]?.territory || null);
+        mrMap[u.id] = {
+          mrId: u.id,
+          mrName: `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+          firstName: u.firstName,
+          lastName: u.lastName,
+          employeeId: u.employeeId || 'EMP',
+          email: u.email,
+          role: u.role,
+          hqName: hq?.name || 'Territory',
+          hqCode: hq?.code || 'HQ',
+          ordersCount: 0,
+          totalSales: 0,
+          paidUnits: 0,
+          freeUnits: 0,
+          totalUnits: 0,
+          effectiveBonusRate: 0,
+          schemesUsed: {},
+          topProducts: {},
+          orders: []
+        };
+      }
+
+      const mrRecord = mrMap[u.id];
+      mrRecord.ordersCount += 1;
+      mrRecord.totalSales += (order.totalAmount || 0);
+      totalSalesValue += (order.totalAmount || 0);
+
+      let orderPaidUnits = 0;
+      let orderFreeUnits = 0;
+      const orderItemsDetailed: any[] = [];
+
+      (order.items || []).forEach(item => {
+        const qty = item.quantity || 0;
+        const price = item.totalPrice || (qty * (item.unitPrice || 0));
+        orderPaidUnits += qty;
+        totalPaidUnits += qty;
+        mrRecord.paidUnits += qty;
+
+        const bonusInfo = extractBonusUnits(item.productScheme, qty);
+        orderFreeUnits += bonusInfo.bonusUnits;
+        totalFreeUnits += bonusInfo.bonusUnits;
+        mrRecord.freeUnits += bonusInfo.bonusUnits;
+
+        // Track scheme in MR record
+        const scKey = bonusInfo.ratio !== 'None' ? bonusInfo.ratio : 'No Scheme';
+        if (!mrRecord.schemesUsed[scKey]) {
+          mrRecord.schemesUsed[scKey] = {
+            schemeName: bonusInfo.schemeName,
+            ratio: bonusInfo.ratio,
+            timesUsed: 0,
+            paidUnits: 0,
+            freeUnits: 0,
+            revenue: 0,
+          };
+        }
+        mrRecord.schemesUsed[scKey].timesUsed += 1;
+        mrRecord.schemesUsed[scKey].paidUnits += qty;
+        mrRecord.schemesUsed[scKey].freeUnits += bonusInfo.bonusUnits;
+        mrRecord.schemesUsed[scKey].revenue += price;
+
+        // Global scheme aggregates
+        if (!schemeAggregates[scKey]) {
+          schemeAggregates[scKey] = {
+            schemeName: bonusInfo.schemeName,
+            ratio: bonusInfo.ratio,
+            timesUsed: 0,
+            paidUnits: 0,
+            freeUnits: 0,
+            revenue: 0,
+          };
+        }
+        schemeAggregates[scKey].timesUsed += 1;
+        schemeAggregates[scKey].paidUnits += qty;
+        schemeAggregates[scKey].freeUnits += bonusInfo.bonusUnits;
+        schemeAggregates[scKey].revenue += price;
+
+        // Product tracking
+        const prodName = item.product?.name || 'Medicine SKU';
+        if (!mrRecord.topProducts[prodName]) {
+          mrRecord.topProducts[prodName] = { name: prodName, paidUnits: 0, freeUnits: 0, revenue: 0 };
+        }
+        mrRecord.topProducts[prodName].paidUnits += qty;
+        mrRecord.topProducts[prodName].freeUnits += bonusInfo.bonusUnits;
+        mrRecord.topProducts[prodName].revenue += price;
+
+        orderItemsDetailed.push({
+          id: item.id,
+          productName: prodName,
+          quantity: qty,
+          unitPrice: item.unitPrice,
+          totalPrice: price,
+          productScheme: item.productScheme || 'Standard',
+          freeUnits: bonusInfo.bonusUnits,
+          ratio: bonusInfo.ratio,
+        });
+      });
+
+      mrRecord.orders.push({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        orderDate: order.orderDate,
+        totalAmount: order.totalAmount,
+        customerName: order.retailer?.name || order.distributor?.name || 'Direct Clinic / Hospital',
+        customerType: order.retailer ? 'Retailer' : order.distributor ? 'Distributor' : 'Visit Order',
+        paidUnits: orderPaidUnits,
+        freeUnits: orderFreeUnits,
+        itemsCount: (order.items || []).length,
+        items: orderItemsDetailed,
+      });
+    });
+
+    // Finalize MR records
+    const mrList = Object.values(mrMap).map(m => {
+      m.totalUnits = m.paidUnits + m.freeUnits;
+      m.effectiveBonusRate = m.paidUnits > 0 ? Math.round((m.freeUnits / m.paidUnits) * 100) : 0;
+      m.schemesList = Object.values(m.schemesUsed);
+      m.topProductsList = Object.values(m.topProducts).sort((a: any, b: any) => b.revenue - a.revenue);
+      return m;
+    }).sort((a, b) => b.totalSales - a.totalSales);
+
+    // Format Schemes list
+    const schemesSummary = Object.values(schemeAggregates).sort((a, b) => b.revenue - a.revenue);
+
+    // Build timeline daily trend
+    const timelineMap: Record<string, { date: string; displayDate: string; revenue: number; paidUnits: number; freeUnits: number; ordersCount: number }> = {};
+    orders.forEach(o => {
+      const dStr = new Date(o.orderDate).toISOString().slice(0, 10);
+      if (!timelineMap[dStr]) {
+        const dObj = new Date(o.orderDate);
+        timelineMap[dStr] = {
+          date: dStr,
+          displayDate: dObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+          revenue: 0,
+          paidUnits: 0,
+          freeUnits: 0,
+          ordersCount: 0,
+        };
+      }
+      timelineMap[dStr].revenue += (o.totalAmount || 0);
+      timelineMap[dStr].ordersCount += 1;
+      (o.items || []).forEach(it => {
+        timelineMap[dStr].paidUnits += (it.quantity || 0);
+        const b = extractBonusUnits(it.productScheme, it.quantity || 0);
+        timelineMap[dStr].freeUnits += b.bonusUnits;
+      });
+    });
+
+    const salesTrend = Object.values(timelineMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalOrdersCount,
+          totalSalesValue,
+          totalPaidUnits,
+          totalFreeUnits,
+          totalDispatchedUnits: totalPaidUnits + totalFreeUnits,
+          overallBonusRatio: totalPaidUnits > 0 ? ((totalFreeUnits / totalPaidUnits) * 100).toFixed(1) : '0',
+          avgOrderValue: totalOrdersCount > 0 ? Math.round(totalSalesValue / totalOrdersCount) : 0,
+          activeMRsCount: mrList.filter(m => m.ordersCount > 0).length,
+          totalMRsCount: mrList.length,
+        },
+        mrList,
+        schemesSummary,
+        salesTrend,
+        headquarters: allHqs,
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;
