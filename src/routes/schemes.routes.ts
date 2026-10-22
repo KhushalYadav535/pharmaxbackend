@@ -40,11 +40,30 @@ router.get('/:id', async (req, res) => {
 // ── POST /schemes (Create scheme - Admin / Manager) ──────────────────────────
 router.post('/', requireManager, async (req, res) => {
   try {
-    const { name, description, type, startDate, endDate, targetRole, minPurchase, reward, isActive } = req.body;
+    const {
+      name,
+      description,
+      type,
+      startDate,
+      endDate,
+      targetRole,
+      minPurchase,
+      reward,
+      isActive,
+      buyQuantity,
+      freeQuantity,
+      productIds,
+    } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Scheme name is required' });
     }
+
+    const buyQty = buyQuantity !== undefined ? parseInt(buyQuantity, 10) : (minPurchase ? Math.round(parseFloat(minPurchase)) : 10);
+    const freeQty = freeQuantity !== undefined ? parseInt(freeQuantity, 10) : 1;
+    const pIds = Array.isArray(productIds) ? productIds : (typeof productIds === 'string' && productIds.trim() ? productIds.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+
+    const computedReward = reward?.trim() || `${buyQty}+${freeQty} Free Goods`;
 
     const scheme = await prisma.scheme.create({
       data: {
@@ -54,8 +73,11 @@ router.post('/', requireManager, async (req, res) => {
         startDate: startDate ? new Date(startDate) : new Date(),
         endDate: endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         targetRole: targetRole || 'ALL',
-        minPurchase: minPurchase ? parseFloat(minPurchase) : 10,
-        reward: reward?.trim() || '10+1 Free Goods',
+        minPurchase: buyQty,
+        buyQuantity: buyQty,
+        freeQuantity: freeQty,
+        productIds: pIds,
+        reward: computedReward,
         isActive: isActive !== false,
       },
     });
@@ -73,7 +95,20 @@ router.put('/:id', requireManager, async (req, res) => {
     const existing = await prisma.scheme.findUnique({ where: { id: id as string } });
     if (!existing) return res.status(404).json({ success: false, message: 'Scheme not found' });
 
-    const { name, description, type, startDate, endDate, targetRole, minPurchase, reward, isActive } = req.body;
+    const {
+      name,
+      description,
+      type,
+      startDate,
+      endDate,
+      targetRole,
+      minPurchase,
+      reward,
+      isActive,
+      buyQuantity,
+      freeQuantity,
+      productIds,
+    } = req.body;
 
     const data: any = {};
     if (name !== undefined) data.name = name.trim();
@@ -82,8 +117,31 @@ router.put('/:id', requireManager, async (req, res) => {
     if (startDate !== undefined) data.startDate = new Date(startDate);
     if (endDate !== undefined) data.endDate = new Date(endDate);
     if (targetRole !== undefined) data.targetRole = targetRole;
-    if (minPurchase !== undefined) data.minPurchase = minPurchase ? parseFloat(minPurchase) : null;
-    if (reward !== undefined) data.reward = reward?.trim() || null;
+
+    if (buyQuantity !== undefined) {
+      data.buyQuantity = parseInt(buyQuantity, 10);
+      data.minPurchase = data.buyQuantity;
+    } else if (minPurchase !== undefined) {
+      data.minPurchase = parseFloat(minPurchase);
+      data.buyQuantity = Math.round(data.minPurchase);
+    }
+
+    if (freeQuantity !== undefined) {
+      data.freeQuantity = parseInt(freeQuantity, 10);
+    }
+
+    if (productIds !== undefined) {
+      data.productIds = Array.isArray(productIds) ? productIds : (typeof productIds === 'string' && productIds.trim() ? productIds.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+    }
+
+    if (reward !== undefined) {
+      data.reward = reward?.trim() || null;
+    } else if (buyQuantity !== undefined || freeQuantity !== undefined) {
+      const b = data.buyQuantity ?? existing.buyQuantity ?? 10;
+      const f = data.freeQuantity ?? existing.freeQuantity ?? 1;
+      data.reward = `${b}+${f} Free Goods`;
+    }
+
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
     const updated = await prisma.scheme.update({

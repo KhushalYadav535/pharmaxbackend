@@ -179,7 +179,7 @@ export const tourPlanService = {
           tourPlanDayId,
           userId,
           visitType: visitType as any,
-          plannedDate: day.date,
+          plannedDate: v.plannedDate ? new Date(v.plannedDate) : day.date,
           status: 'PLANNED',
           doctorId: sDoctorId,
           hospitalId: sHospitalId,

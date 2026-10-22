@@ -1256,18 +1256,21 @@ model StockReport {
 // â”€â”€â”€ Trade Promotion / Schemes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 model Scheme {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  type        String
-  startDate   DateTime
-  endDate     DateTime
-  targetRole  String?
-  minPurchase Float?
-  reward      String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(uuid())
+  name         String
+  description  String?
+  type         String
+  startDate    DateTime
+  endDate      DateTime
+  targetRole   String?
+  minPurchase  Float?
+  reward       String?
+  buyQuantity  Int?      @default(10)
+  freeQuantity Int?      @default(1)
+  productIds   String[]  @default([])
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("schemes")
 }
