@@ -214,6 +214,27 @@ export const doctorController = {
         return digits.length >= 10 ? digits.slice(-10) : digits;
       };
 
+      const parseSheetDate = (val?: any): Date | null => {
+        if (!val) return null;
+        if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+        if (typeof val === 'number' && val > 1000 && val < 60000) {
+          const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+          return isNaN(d.getTime()) ? null : d;
+        }
+        const str = String(val).trim();
+        const parts = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+        if (parts) {
+          const day = parseInt(parts[1], 10);
+          const month = parseInt(parts[2], 10) - 1;
+          let year = parseInt(parts[3], 10);
+          if (year < 100) year += year > 50 ? 1900 : 2000;
+          const d = new Date(year, month, day);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
       const normalizeDoctorName = (first?: string, last?: string): string => {
         return `${first || ''} ${last || ''}`
           .toLowerCase()
@@ -348,6 +369,8 @@ export const doctorController = {
               prescriptionPotential: Number(item.prescriptionPotential) || 0,
               isKol: item.isKol === true || String(item.isKol).toLowerCase() === 'true' || String(item.isKol).toLowerCase() === 'yes',
               kolCategory: item.kolCategory || null,
+              dateOfBirth: parseSheetDate(item.dateOfBirth || item.dob),
+              marriageAnniversary: parseSheetDate(item.marriageAnniversary || item.dom),
               approvalStatus: 'APPROVED',
               isActive: true,
             },

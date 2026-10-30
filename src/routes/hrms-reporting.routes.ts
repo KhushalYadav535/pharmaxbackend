@@ -7,6 +7,7 @@ const router = Router();
 router.use(authenticate);
 
 // Organization reporting tree
+router.get('/', requireManager, hrmsReportingController.getReportingTree);
 router.get('/tree', requireManager, hrmsReportingController.getReportingTree);
 
 // Manager team hierarchy

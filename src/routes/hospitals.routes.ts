@@ -9,11 +9,19 @@ router.use(authenticate);
 
 router.get('/', async (req, res) => {
   try {
-    const { search, page = '1', limit = '20' } = req.query;
+    const { search, page = '1', limit = '20', approvalStatus } = req.query;
     const where: Prisma.HospitalWhereInput = {
-      deletedAt: null, isActive: true, approvalStatus: (req.query.approvalStatus as any) || 'APPROVED',
+      deletedAt: null,
+      isActive: true,
       ...(search && { name: { contains: search as string, mode: 'insensitive' } }),
     };
+
+    const statusFilter = approvalStatus as string;
+    if (statusFilter && statusFilter !== 'ALL') {
+      where.approvalStatus = statusFilter as any;
+    } else if (!statusFilter) {
+      where.approvalStatus = { in: ['APPROVED', 'PENDING'] };
+    }
 
     if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(req.user!.role)) {
       const user = await prisma.user.findUnique({
@@ -101,6 +109,17 @@ router.post('/', auditLog('CREATE', 'Hospital'), async (req, res) => {
         where: { userId: req.user!.userId }
       });
       if (userTerritory) data.territoryId = userTerritory.territoryId;
+    }
+
+    if (!data.approvalStatus) {
+      data.approvalStatus = 'APPROVED';
+    }
+
+    const fkFields = ['areaId', 'hqId', 'territoryId', 'cfaId'];
+    for (const f of fkFields) {
+      if (data[f] === '' || data[f] === null) {
+        delete data[f];
+      }
     }
 
     const h = await prisma.hospital.create({ data });
