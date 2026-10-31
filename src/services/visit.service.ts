@@ -118,15 +118,22 @@ export interface CancelVisitInput {
 export const visitService = {
 
   async list(filters: any, userId: string, userRole: string) {
-    let { page = 1, limit = 20, status, visitType, fromDate, toDate, doctorId } = filters;
+    let { page = 1, limit = 20, status, visitType, fromDate, toDate, doctorId, userId: filterUserId, mrId } = filters;
     page = Number(page) || 1;
     limit = Number(limit) || 20;
 
     const where: Prisma.VisitWhereInput = {
-      ...(status && { status }),
       ...(visitType && { visitType }),
       ...(doctorId && { doctorId }),
     };
+
+    if (status) {
+      if (status === 'COMPLETED' || status === 'REPORTED') {
+        where.status = { in: ['COMPLETED', 'REPORTED'] };
+      } else {
+        where.status = status;
+      }
+    }
 
     if (fromDate || toDate) {
       const fDate = fromDate ? new Date(new Date(fromDate).setHours(0, 0, 0, 0)) : undefined;
@@ -138,7 +145,10 @@ export const visitService = {
       ];
     }
 
-    if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {
+    const targetUserId = filterUserId || mrId;
+    if (targetUserId && targetUserId !== 'ALL') {
+      where.userId = targetUserId;
+    } else if (['MR', 'TRADE_REP', 'DISTRIBUTOR_REP'].includes(userRole)) {
       where.userId = userId;
     } else if (['ASM', 'RSM', 'ZM', 'NSM'].includes(userRole)) {
       const reportIds = await prisma.user.findMany({
@@ -169,15 +179,24 @@ export const visitService = {
   },
 
   async listTeam(filters: any, userId: string, userRole: string) {
-    let { page = 1, limit = 30, status, visitType, fromDate, toDate, mrId } = filters;
+    let { page = 1, limit = 30, status, visitType, fromDate, toDate, mrId, userId: filterUserId } = filters;
     page = Number(page) || 1;
     limit = Number(limit) || 30;
 
+    const targetUserId = filterUserId || mrId;
+
     const where: Prisma.VisitWhereInput = {
-      ...(status && { status }),
       ...(visitType && { visitType }),
-      ...(mrId && { userId: mrId }),
+      ...(targetUserId && targetUserId !== 'ALL' && { userId: targetUserId }),
     };
+
+    if (status) {
+      if (status === 'COMPLETED' || status === 'REPORTED') {
+        where.status = { in: ['COMPLETED', 'REPORTED'] };
+      } else {
+        where.status = status;
+      }
+    }
 
     if (fromDate || toDate) {
       const fDate = fromDate ? new Date(new Date(fromDate).setHours(0, 0, 0, 0)) : undefined;
@@ -189,8 +208,8 @@ export const visitService = {
       ];
     }
 
-    if (!mrId) {
-      if (['SUPER_ADMIN', 'SALES_ADMIN'].includes(userRole)) {
+    if (!targetUserId || targetUserId === 'ALL') {
+      if (['SUPER_ADMIN', 'SALES_ADMIN', 'ADMIN'].includes(userRole)) {
         // See all
       } else if (['NSM', 'ZM', 'RSM', 'ASM'].includes(userRole)) {
         const allReporteeIds = await getHierarchyIds(userId);
