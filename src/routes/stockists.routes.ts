@@ -9,5 +9,7 @@ router.get('/:id', stockistController.getById);
 router.post('/', stockistController.create);
 router.put('/:id', stockistController.update);
 router.patch('/:id/deactivate', stockistController.deactivate);
+router.patch('/:id/reactivate', stockistController.reactivate);
+router.delete('/:id', stockistController.delete);
 export default router;
 

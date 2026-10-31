@@ -9,4 +9,6 @@ router.get('/:id', cfaController.getById);
 router.post('/', cfaController.create);
 router.put('/:id', cfaController.update);
 router.patch('/:id/deactivate', cfaController.deactivate);
+router.patch('/:id/reactivate', cfaController.reactivate);
+router.delete('/:id', cfaController.delete);
 export default router;

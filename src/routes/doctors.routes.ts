@@ -12,6 +12,8 @@ router.post('/bulk', auditLog('BULK_IMPORT', 'Doctor'), doctorController.bulkCre
 router.post('/bulk-transfer', auditLog('BULK_TRANSFER', 'Doctor'), doctorController.bulkTransfer);
 router.post('/bulk-delete', auditLog('BULK_DELETE', 'Doctor'), doctorController.bulkDelete);
 router.get('/:id', doctorController.getById);
+router.patch('/:id/deactivate', auditLog('DEACTIVATE', 'Doctor'), doctorController.deactivate);
+router.patch('/:id/reactivate', auditLog('REACTIVATE', 'Doctor'), doctorController.reactivate);
 router.post('/', auditLog('CREATE', 'Doctor'), doctorController.create);
 router.put('/:id', auditLog('UPDATE', 'Doctor'), doctorController.update);
 router.delete('/:id', auditLog('DELETE', 'Doctor'), doctorController.delete);

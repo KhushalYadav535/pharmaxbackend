@@ -489,4 +489,22 @@ export const doctorController = {
       res.status(500).json({ success: false, message: err.message });
     }
   },
+
+  async deactivate(req: Request, res: Response) {
+    try {
+      const doctor = await doctorService.update(req.params.id as string, { isActive: false });
+      res.json({ success: true, data: doctor, message: 'Doctor deactivated successfully' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  async reactivate(req: Request, res: Response) {
+    try {
+      const doctor = await doctorService.update(req.params.id as string, { isActive: true });
+      res.json({ success: true, data: doctor, message: 'Doctor reactivated successfully' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
 };

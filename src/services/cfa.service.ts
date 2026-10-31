@@ -32,4 +32,12 @@ export const cfaService = {
   async deactivate(id: string) {
     return prisma.cFA.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
   },
+
+  async reactivate(id: string) {
+    return prisma.cFA.update({ where: { id }, data: { isActive: true, deletedAt: null } });
+  },
+
+  async delete(id: string) {
+    return prisma.cFA.delete({ where: { id } });
+  },
 };

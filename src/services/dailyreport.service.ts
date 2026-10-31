@@ -12,11 +12,96 @@ export const dailyReportService = {
     
     if (startDate || endDate) {
       where.visitDate = {};
-      if (startDate) where.visitDate.gte = new Date(startDate);
-      if (endDate) where.visitDate.lte = new Date(endDate);
+      if (startDate) {
+        const s = new Date(startDate);
+        s.setHours(0, 0, 0, 0);
+        where.visitDate.gte = s;
+      }
+      if (endDate) {
+        const e = new Date(endDate);
+        e.setHours(23, 59, 59, 999);
+        where.visitDate.lte = e;
+      }
     }
 
-    const [reports, total] = await Promise.all([
+    // Filters for Visit table
+    const visitWhere: any = {};
+    if (employeeId) visitWhere.userId = employeeId;
+    if (visitType) visitWhere.visitType = visitType;
+    if (startDate || endDate) {
+      visitWhere.plannedDate = {};
+      if (startDate) {
+        const s = new Date(startDate);
+        s.setHours(0, 0, 0, 0);
+        visitWhere.plannedDate.gte = s;
+      }
+      if (endDate) {
+        const e = new Date(endDate);
+        e.setHours(23, 59, 59, 999);
+        visitWhere.plannedDate.lte = e;
+      }
+    }
+
+    const [dailyCount, visitCount] = await Promise.all([
+      prisma.dailyVisitReport.count({ where }),
+      prisma.visit.count({ where: visitWhere })
+    ]);
+
+    // If no records in dailyVisitReport, paginate directly on Visit
+    if (dailyCount === 0) {
+      const visits = await prisma.visit.findMany({
+        where: visitWhere,
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
+          doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+          hospital: { select: { id: true, name: true } },
+          retailer: { select: { id: true, name: true } },
+          stockist: { select: { id: true, name: true } },
+          distributor: { select: { id: true, name: true } }
+        },
+        skip: (p - 1) * l,
+        take: l,
+        orderBy: { plannedDate: 'desc' }
+      });
+
+      const mapped = visits.map((v: any) => ({
+        id: v.id,
+        employeeId: v.userId,
+        employee: v.user ? {
+          id: v.user.id,
+          firstName: v.user.firstName,
+          lastName: v.user.lastName,
+          employeeId: v.user.employeeId,
+          employeeCode: v.user.employeeId
+        } : null,
+        visitDate: v.plannedDate || v.checkInTime || v.createdAt,
+        visitType: v.visitType,
+        doctorId: v.doctorId,
+        doctor: v.doctor,
+        hospitalId: v.hospitalId,
+        hospital: v.hospital,
+        retailerId: v.retailerId,
+        retailer: v.retailer,
+        stockistId: v.stockistId || v.distributorId,
+        stockist: v.stockist || v.distributor,
+        visitPurpose: v.visitPurpose || (v.visitObjective && v.visitObjective.length ? v.visitObjective.join(', ') : null),
+        visitFeedback: v.visitFeedback || v.doctorFeedback || v.notes || (v.objectionsRaised ? `Objections: ${v.objectionsRaised}` : null),
+        nextVisit: v.nextVisit || v.nextFollowUpDate,
+        remarks: v.remarks,
+        jointVisit: v.jointVisit,
+        jointVisitWith: v.jointVisitWith,
+        productsPromoted: v.productsPromoted || v.productsDiscussed || [],
+        locationLat: v.checkInLat,
+        locationLng: v.checkInLng,
+        locationAddress: v.checkInAddress,
+        status: v.status
+      }));
+
+      return { reports: mapped, total: visitCount, page: p, totalPages: Math.ceil(visitCount / l) };
+    }
+
+    // Both tables have records - query both and merge
+    const [dailyReports, visits] = await Promise.all([
       prisma.dailyVisitReport.findMany({
         where,
         include: {
@@ -27,30 +112,126 @@ export const dailyReportService = {
           retailer: { select: { id: true, name: true } },
           stockist: { select: { id: true, name: true } }
         },
-        skip: (p - 1) * l,
-        take: l,
         orderBy: { visitDate: 'desc' }
       }),
-      prisma.dailyVisitReport.count({ where })
+      prisma.visit.findMany({
+        where: visitWhere,
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
+          doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+          hospital: { select: { id: true, name: true } },
+          retailer: { select: { id: true, name: true } },
+          stockist: { select: { id: true, name: true } },
+          distributor: { select: { id: true, name: true } }
+        },
+        orderBy: { plannedDate: 'desc' }
+      })
     ]);
 
-    return { reports, total, page: p, totalPages: Math.ceil(total / l) };
+    const mappedVisits = visits.map((v: any) => ({
+      id: v.id,
+      employeeId: v.userId,
+      employee: v.user ? {
+        id: v.user.id,
+        firstName: v.user.firstName,
+        lastName: v.user.lastName,
+        employeeId: v.user.employeeId,
+        employeeCode: v.user.employeeId
+      } : null,
+      visitDate: v.plannedDate || v.checkInTime || v.createdAt,
+      visitType: v.visitType,
+      doctorId: v.doctorId,
+      doctor: v.doctor,
+      hospitalId: v.hospitalId,
+      hospital: v.hospital,
+      retailerId: v.retailerId,
+      retailer: v.retailer,
+      stockistId: v.stockistId || v.distributorId,
+      stockist: v.stockist || v.distributor,
+      visitPurpose: v.visitPurpose || (v.visitObjective && v.visitObjective.length ? v.visitObjective.join(', ') : null),
+      visitFeedback: v.visitFeedback || v.doctorFeedback || v.notes || (v.objectionsRaised ? `Objections: ${v.objectionsRaised}` : null),
+      nextVisit: v.nextVisit || v.nextFollowUpDate,
+      remarks: v.remarks,
+      jointVisit: v.jointVisit,
+      jointVisitWith: v.jointVisitWith,
+      productsPromoted: v.productsPromoted || v.productsDiscussed || [],
+      locationLat: v.checkInLat,
+      locationLng: v.checkInLng,
+      locationAddress: v.checkInAddress,
+      status: v.status
+    }));
+
+    const combined = [...dailyReports, ...mappedVisits].sort((a, b) => {
+      const tA = new Date(a.visitDate).getTime();
+      const tB = new Date(b.visitDate).getTime();
+      return tB - tA;
+    });
+
+    const total = combined.length;
+    const paginated = combined.slice((p - 1) * l, p * l);
+
+    return { reports: paginated, total, page: p, totalPages: Math.ceil(total / l) };
   },
 
   async getById(id: string) {
     const report = await prisma.dailyVisitReport.findUnique({
       where: { id },
       include: {
-        employee: { select: { id: true, firstName: true, lastName: true } },
+        employee: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
         hq: { select: { id: true, name: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true } },
+        doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
         hospital: { select: { id: true, name: true } },
         retailer: { select: { id: true, name: true } },
         stockist: { select: { id: true, name: true } }
       }
     });
-    if (!report) throw new Error('Daily Report not found');
-    return report;
+    if (report) return report;
+
+    const v = await prisma.visit.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
+        doctor: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+        hospital: { select: { id: true, name: true } },
+        retailer: { select: { id: true, name: true } },
+        stockist: { select: { id: true, name: true } },
+        distributor: { select: { id: true, name: true } }
+      }
+    });
+    if (!v) throw new Error('Daily Report not found');
+
+    return {
+      id: v.id,
+      employeeId: v.userId,
+      employee: v.user ? {
+        id: v.user.id,
+        firstName: v.user.firstName,
+        lastName: v.user.lastName,
+        employeeId: v.user.employeeId,
+        employeeCode: v.user.employeeId
+      } : null,
+      visitDate: v.plannedDate || v.checkInTime || v.createdAt,
+      visitType: v.visitType,
+      doctorId: v.doctorId,
+      doctor: v.doctor,
+      hospitalId: v.hospitalId,
+      hospital: v.hospital,
+      retailerId: v.retailerId,
+      retailer: v.retailer,
+      stockistId: v.stockistId || v.distributorId,
+      stockist: v.stockist || v.distributor,
+      visitPurpose: v.visitPurpose || (v.visitObjective && v.visitObjective.length ? v.visitObjective.join(', ') : null),
+      visitFeedback: v.visitFeedback || v.doctorFeedback || v.notes || (v.objectionsRaised ? `Objections: ${v.objectionsRaised}` : null),
+      nextVisit: v.nextVisit || v.nextFollowUpDate,
+      remarks: v.remarks,
+      jointVisit: v.jointVisit,
+      jointVisitWith: v.jointVisitWith,
+      productsPromoted: v.productsPromoted || v.productsDiscussed || [],
+      locationLat: v.checkInLat,
+      locationLng: v.checkInLng,
+      locationAddress: v.checkInAddress,
+      status: v.status
+    };
   },
 
   async create(reqUserId: string, data: any) {
@@ -65,7 +246,6 @@ export const dailyReportService = {
       throw new Error('Visit Type and Visit Date are required');
     }
 
-    // Validation for specific visit types
     if (visitType === 'DOCTOR' && !doctorId) throw new Error('Doctor must be selected for Doctor visit');
     if (visitType === 'HOSPITAL' && !hospitalId) throw new Error('Hospital must be selected for Hospital visit');
     if (visitType === 'RETAILER' && !retailerId) throw new Error('Retailer must be selected for Retailer visit');
@@ -73,7 +253,7 @@ export const dailyReportService = {
 
     return prisma.dailyVisitReport.create({
       data: {
-        employeeId: employeeId || reqUserId, // Admins can log for others
+        employeeId: employeeId || reqUserId,
         hqId,
         visitType,
         doctorId: visitType === 'DOCTOR' ? doctorId : undefined,
@@ -96,41 +276,65 @@ export const dailyReportService = {
   },
 
   async update(id: string, data: any) {
-    await this.getById(id);
-    
-    const { 
-      visitType, hqId, doctorId, hospitalId, retailerId, stockistId,
-      visitDate, visitPurpose, visitFeedback, nextVisit, remarks,
-      jointVisit, jointVisitWith, productsPromoted,
-      locationLat, locationLng, locationAddress 
-    } = data;
+    const report = await prisma.dailyVisitReport.findUnique({ where: { id } });
+    if (report) {
+      const { 
+        visitType, hqId, doctorId, hospitalId, retailerId, stockistId,
+        visitDate, visitPurpose, visitFeedback, nextVisit, remarks,
+        jointVisit, jointVisitWith, productsPromoted,
+        locationLat, locationLng, locationAddress 
+      } = data;
 
-    return prisma.dailyVisitReport.update({
-      where: { id },
-      data: {
-        hqId,
-        visitType,
-        doctorId: visitType === 'DOCTOR' ? doctorId : null,
-        hospitalId: visitType === 'HOSPITAL' ? hospitalId : null,
-        retailerId: visitType === 'RETAILER' ? retailerId : null,
-        stockistId: visitType === 'STOCKIST' ? stockistId : null,
-        visitDate: visitDate ? new Date(visitDate) : undefined,
-        visitPurpose,
-        visitFeedback,
-        nextVisit: nextVisit !== undefined ? (nextVisit ? new Date(nextVisit) : null) : undefined,
-        remarks,
-        jointVisit: jointVisit !== undefined ? Boolean(jointVisit) : undefined,
-        jointVisitWith,
-        productsPromoted: Array.isArray(productsPromoted) ? productsPromoted : undefined,
-        locationLat: locationLat ? parseFloat(locationLat) : undefined,
-        locationLng: locationLng ? parseFloat(locationLng) : undefined,
-        locationAddress
-      }
-    });
+      return prisma.dailyVisitReport.update({
+        where: { id },
+        data: {
+          hqId,
+          visitType,
+          doctorId: visitType === 'DOCTOR' ? doctorId : null,
+          hospitalId: visitType === 'HOSPITAL' ? hospitalId : null,
+          retailerId: visitType === 'RETAILER' ? retailerId : null,
+          stockistId: visitType === 'STOCKIST' ? stockistId : null,
+          visitDate: visitDate ? new Date(visitDate) : undefined,
+          visitPurpose,
+          visitFeedback,
+          nextVisit: nextVisit !== undefined ? (nextVisit ? new Date(nextVisit) : null) : undefined,
+          remarks,
+          jointVisit: jointVisit !== undefined ? Boolean(jointVisit) : undefined,
+          jointVisitWith,
+          productsPromoted: Array.isArray(productsPromoted) ? productsPromoted : undefined,
+          locationLat: locationLat ? parseFloat(locationLat) : undefined,
+          locationLng: locationLng ? parseFloat(locationLng) : undefined,
+          locationAddress
+        }
+      });
+    }
+
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (visit) {
+      return prisma.visit.update({
+        where: { id },
+        data: {
+          visitPurpose: data.visitPurpose,
+          visitFeedback: data.visitFeedback,
+          remarks: data.remarks,
+          nextVisit: data.nextVisit ? new Date(data.nextVisit) : undefined,
+          productsPromoted: Array.isArray(data.productsPromoted) ? data.productsPromoted : undefined
+        }
+      });
+    }
+
+    throw new Error('Daily Report not found');
   },
 
   async delete(id: string) {
-    await this.getById(id);
-    return prisma.dailyVisitReport.delete({ where: { id } });
+    const report = await prisma.dailyVisitReport.findUnique({ where: { id } });
+    if (report) {
+      return prisma.dailyVisitReport.delete({ where: { id } });
+    }
+    const visit = await prisma.visit.findUnique({ where: { id } });
+    if (visit) {
+      return prisma.visit.delete({ where: { id } });
+    }
+    throw new Error('Daily Report not found');
   }
 };

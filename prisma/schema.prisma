@@ -1373,6 +1373,7 @@ model Survey {
 model Target {
   id           String    @id @default(uuid())
   targetYear   Int // Year
+  targetMonth  Int? // Month (1-12)
   targetAmount Float // Target amount (Mandatory)
   hqId         String
   hq           Territory @relation(fields: [hqId], references: [id])

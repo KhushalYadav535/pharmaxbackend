@@ -2,11 +2,16 @@ import prisma from '../config/database';
 
 export const targetService = {
   async list(filters: any) {
-    const { page = 1, limit = 20, targetYear, hqId } = filters;
+    const { page = 1, limit = 20, targetYear, targetMonth, hqId } = filters;
     const p = Number(page), l = Number(limit);
     
     const where: any = {};
     if (targetYear) where.targetYear = Number(targetYear);
+    if (targetMonth === 'annual' || targetMonth === 'null') {
+      where.targetMonth = null;
+    } else if (targetMonth) {
+      where.targetMonth = Number(targetMonth);
+    }
     if (hqId) where.hqId = hqId;
 
     const [targets, total] = await Promise.all([
@@ -15,7 +20,7 @@ export const targetService = {
         include: { hq: { select: { id: true, name: true, code: true } } },
         skip: (p - 1) * l,
         take: l,
-        orderBy: { targetYear: 'desc' }
+        orderBy: [{ targetYear: 'desc' }, { targetMonth: 'desc' }]
       }),
       prisma.target.count({ where })
     ]);
@@ -33,24 +38,28 @@ export const targetService = {
   },
 
   async create(data: any) {
-    const { targetYear, targetAmount, hqId } = data;
+    const { targetYear, targetMonth, targetAmount, hqId } = data;
     
     if (!targetYear || !targetAmount || !hqId) {
       throw new Error('Year, Amount, and Headquarter are required');
     }
 
-    // Check if target for this HQ and year already exists
+    const tMonth = targetMonth ? Number(targetMonth) : null;
+
+    // Check if target for this HQ, year and month already exists
     const existing = await prisma.target.findFirst({
-      where: { hqId, targetYear: Number(targetYear) }
+      where: { hqId, targetYear: Number(targetYear), targetMonth: tMonth }
     });
     
     if (existing) {
-      throw new Error(`Target for this Headquarter in ${targetYear} already exists`);
+      const monthStr = tMonth ? `Month ${tMonth}/` : '';
+      throw new Error(`Target for this Headquarter in ${monthStr}${targetYear} already exists`);
     }
 
     return prisma.target.create({
       data: {
         targetYear: Number(targetYear),
+        targetMonth: tMonth,
         targetAmount: Number(targetAmount),
         hqId
       },
@@ -59,13 +68,14 @@ export const targetService = {
   },
 
   async update(id: string, data: any) {
-    const { targetYear, targetAmount, hqId } = data;
+    const { targetYear, targetMonth, targetAmount, hqId } = data;
     await this.getById(id);
 
     return prisma.target.update({
       where: { id },
       data: {
         targetYear: targetYear ? Number(targetYear) : undefined,
+        targetMonth: targetMonth !== undefined ? (targetMonth ? Number(targetMonth) : null) : undefined,
         targetAmount: targetAmount ? Number(targetAmount) : undefined,
         hqId
       },

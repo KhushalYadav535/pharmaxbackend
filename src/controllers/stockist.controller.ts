@@ -48,4 +48,16 @@ export const stockistController = {
       res.json({ success: true, message: 'Stockist deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
+  async reactivate(req: Request, res: Response) {
+    try {
+      await stockistService.reactivate(req.params.id as string);
+      res.json({ success: true, message: 'Stockist reactivated' });
+    } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+  },
+  async delete(req: Request, res: Response) {
+    try {
+      await stockistService.delete(req.params.id as string);
+      res.json({ success: true, message: 'Stockist deleted' });
+    } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+  },
 };

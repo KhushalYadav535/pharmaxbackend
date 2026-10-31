@@ -48,4 +48,16 @@ export const cfaController = {
       res.json({ success: true, message: 'CFA deactivated' });
     } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
   },
+  async reactivate(req: Request, res: Response) {
+    try {
+      await cfaService.reactivate(req.params.id as string);
+      res.json({ success: true, message: 'CFA reactivated' });
+    } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+  },
+  async delete(req: Request, res: Response) {
+    try {
+      await cfaService.delete(req.params.id as string);
+      res.json({ success: true, message: 'CFA deleted' });
+    } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+  },
 };

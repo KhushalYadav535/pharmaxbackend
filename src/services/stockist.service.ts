@@ -52,4 +52,12 @@ export const stockistService = {
   async deactivate(id: string) {
     return prisma.stockist.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
   },
+
+  async reactivate(id: string) {
+    return prisma.stockist.update({ where: { id }, data: { isActive: true, deletedAt: null } });
+  },
+
+  async delete(id: string) {
+    return prisma.stockist.delete({ where: { id } });
+  },
 };

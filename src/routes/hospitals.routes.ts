@@ -144,5 +144,26 @@ router.put('/:id', auditLog('UPDATE', 'Hospital'), async (req, res) => {
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
 
+router.patch('/:id/deactivate', auditLog('DEACTIVATE', 'Hospital'), async (req, res) => {
+  try {
+    await prisma.hospital.update({ where: { id: req.params.id as string }, data: { isActive: false } });
+    res.json({ success: true, message: 'Hospital deactivated' });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+router.patch('/:id/reactivate', auditLog('REACTIVATE', 'Hospital'), async (req, res) => {
+  try {
+    await prisma.hospital.update({ where: { id: req.params.id as string }, data: { isActive: true } });
+    res.json({ success: true, message: 'Hospital reactivated' });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+router.delete('/:id', auditLog('DELETE', 'Hospital'), async (req, res) => {
+  try {
+    await prisma.hospital.update({ where: { id: req.params.id as string }, data: { deletedAt: new Date(), isActive: false } });
+    res.json({ success: true, message: 'Hospital deleted' });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+});
+
 export default router;
 

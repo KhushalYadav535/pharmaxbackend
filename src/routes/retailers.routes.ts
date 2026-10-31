@@ -257,6 +257,20 @@ router.put('/:id', auditLog('UPDATE', 'Retailer'), async (req, res) => {
   } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
 });
 
+router.patch('/:id/deactivate', auditLog('DEACTIVATE', 'Retailer'), async (req, res) => {
+  try {
+    await prisma.retailer.update({ where: { id: req.params.id as string }, data: { isActive: false } });
+    res.json({ success: true, message: 'Retailer deactivated' });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+router.patch('/:id/reactivate', auditLog('REACTIVATE', 'Retailer'), async (req, res) => {
+  try {
+    await prisma.retailer.update({ where: { id: req.params.id as string }, data: { isActive: true } });
+    res.json({ success: true, message: 'Retailer reactivated' });
+  } catch (err: any) { res.status(400).json({ success: false, message: err.message }); }
+});
+
 router.delete('/:id', auditLog('DELETE', 'Retailer'), async (req, res) => {
   try {
     await prisma.retailer.update({ where: { id: req.params.id as string }, data: { deletedAt: new Date(), isActive: false } });
